@@ -1,0 +1,56 @@
+package tls
+
+version = 0.0.1
+
+authors = "tensorknower69, octeep"
+
+readme = "README.md"
+
+homepage   = "https://github.com/octeep/idris2-tls"
+sourceloc  = "https://github.com/octeep/idris2-tls.git"
+bugtracker = "https://github.com/octeep/idris2-tls/issues"
+
+license = "ISC (refer to LICENSE file)"
+brief = "A portable idris2 implementation of TLS"
+
+depends = contrib, network
+
+modules = Crypto.AEAD,
+          Crypto.AES,
+          Crypto.ChaCha,
+          Crypto.Curve,
+          Crypto.Curve.Weierstrass,
+          Crypto.Curve.XCurves,
+          Crypto.ECDH,
+          Crypto.GF128,
+          Crypto.HKDF,
+          Crypto.Hash,
+          Crypto.Hash.Interfaces,
+          Crypto.Hash.SHA2,
+          Crypto.RSA,
+          Crypto.Random,
+          Crypto.Random.C,
+          Crypto.Random.JS,
+          Data.Security.DER,
+          Data.Security.PEM,
+          Network.TLS,
+          Network.TLS.Core,
+          Network.TLS.Handshake,
+          Network.TLS.HelloExtension,
+          Network.TLS.Magic,
+          Network.TLS.Parsing,
+          Network.TLS.Record,
+          Network.TLS.Wrapper,
+          Utils.Base64,
+          Utils.Bytes,
+          Utils.Misc,
+          Utils.Misc.C,
+          Utils.Network,
+          Utils.OS,
+          Utils.Pair,
+          Utils.Parser,
+          Utils.Repeatedly,
+          Utils.Show
+
+opts = "-Wno-shadowing"
+sourcedir = "src"
