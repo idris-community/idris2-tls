@@ -78,6 +78,7 @@ namespace ServerExtension
     SignatureAlgorithms : SignatureAlgorithm -> ServerExtension SignatureAlgorithms
     SupportedVersions : TLSVersion -> ServerExtension SupportedVersions
     KeyShare : (SupportedGroup, KeyBytes) -> ServerExtension KeyShare
+    Unknown : (id : (Bits8, Bits8)) -> List Bits8 -> ServerExtension (Unknown id)
 
   public export
   Show (ServerExtension type) where
@@ -85,6 +86,7 @@ namespace ServerExtension
     show (SignatureAlgorithms entries) = show_record "SignatureAlgorithms" [("entry", show entries)]
     show (SupportedVersions entries) = show_record "SupportedVersions" [("entry", show entries)]
     show (KeyShare entries) = show_record "KeyShare" [("entry", show entries)]
+    show (Unknown (a, b) body) = show_record "Unknown" [("id", xxd [a, b]), ("body", xxd body)]
 
 XServerExtension : Type
 XServerExtension = Eithers
@@ -92,19 +94,22 @@ XServerExtension = Eithers
   , ServerExtension SignatureAlgorithms
   , ServerExtension SupportedVersions
   , ServerExtension KeyShare
+  , (a ** ServerExtension (Unknown a))
   ]
 
 hack_server_extension : DPair _ ServerExtension -> XServerExtension
-hack_server_extension (SupportedGroups ** x) = Left x
+hack_server_extension (SupportedGroups ** x)     = Left x
 hack_server_extension (SignatureAlgorithms ** x) = Right (Left x)
-hack_server_extension (SupportedVersions ** x) = Right (Right (Left x))
-hack_server_extension (KeyShare ** x) = Right (Right (Right x))
+hack_server_extension (SupportedVersions ** x)   = Right (Right (Left x))
+hack_server_extension (KeyShare ** x)            = Right (Right (Right (Left x)))
+hack_server_extension ((Unknown id) ** x)        = Right (Right (Right (Right (id ** x))))
 
 fix_server_extension : XServerExtension -> DPair _ ServerExtension
 fix_server_extension (Left x) = (_ ** x)
 fix_server_extension (Right (Left x)) = (_ ** x)
 fix_server_extension (Right (Right (Left x))) = (_ ** x)
-fix_server_extension (Right (Right (Right x))) = (_ ** x)
+fix_server_extension (Right (Right (Right (Left x)))) = (_ ** x)
+fix_server_extension (Right (Right (Right (Right (x ** y))))) = (_ ** y)
 
 namespace Parsing
   namespace Client
@@ -172,9 +177,23 @@ namespace Parsing
     with_id pser = under (show type <+> " extension") $ is (pair_to_vect $ extension_type_to_id type) *> pser
 
     export
+    with_id_unknown : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (rid ** ServerExtension (Unknown rid))
+    with_id_unknown = MkParserializer serialize deserialize
+      where
+        serialize : (rid ** ServerExtension (Unknown rid)) -> List Bits8
+        serialize ((a,b) ** (Unknown _ body)) = [a,b] <+> (prepend_length 2 body)
+        deserialize : Parser i (SimpleError String) (rid ** ServerExtension (Unknown rid))
+        deserialize = do
+          [a, b] <- count 2 p_get
+          body <- (lengthed_list 2 token).decode
+          pure ((a,b) ** Unknown (a,b) body)
+
+    export
     extension : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (DPair _ ServerExtension)
     extension = map fix_server_extension hack_server_extension
       $ (with_id no_id_supported_groups)
       <|> (with_id no_id_signature_algorithms)
       <|> (with_id no_id_supported_versions)
       <|> (with_id no_id_key_share)
+      <|> (with_id_unknown)
+
