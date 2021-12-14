@@ -326,6 +326,7 @@ data ExtensionType : Type where
   SupportedVersions : ExtensionType
   SignatureAlgorithms : ExtensionType
   KeyShare : ExtensionType
+  Unknown : (Bits8, Bits8) -> ExtensionType
 
 public export
 Show ExtensionType where
@@ -334,6 +335,7 @@ Show ExtensionType where
   show SupportedVersions   = "SupportedVersions"
   show SignatureAlgorithms = "SignatureAlgorithms"
   show KeyShare            = "KeyShare"
+  show (Unknown _)         = "Unknown"
 
 public export
 extension_type_to_id : ExtensionType -> (Bits8, Bits8)
@@ -342,15 +344,16 @@ extension_type_to_id SupportedGroups     = (0x00, 0x0a)
 extension_type_to_id SignatureAlgorithms = (0x00, 0x0d)
 extension_type_to_id SupportedVersions   = (0x00, 0x2b)
 extension_type_to_id KeyShare            = (0x00, 0x33)
+extension_type_to_id (Unknown x)         = x
 
 public export
-id_to_extension_type : (Bits8, Bits8) -> Maybe ExtensionType
-id_to_extension_type (0x00, 0x00) = Just ServerName
-id_to_extension_type (0x00, 0x0a) = Just SupportedGroups
-id_to_extension_type (0x00, 0x0d) = Just SignatureAlgorithms
-id_to_extension_type (0x00, 0x2b) = Just SupportedVersions
-id_to_extension_type (0x00, 0x33) = Just KeyShare
-id_to_extension_type _ = Nothing
+id_to_extension_type : (Bits8, Bits8) -> ExtensionType
+id_to_extension_type (0x00, 0x00) = ServerName
+id_to_extension_type (0x00, 0x0a) = SupportedGroups
+id_to_extension_type (0x00, 0x0d) = SignatureAlgorithms
+id_to_extension_type (0x00, 0x2b) = SupportedVersions
+id_to_extension_type (0x00, 0x33) = KeyShare
+id_to_extension_type x = Unknown x
 
 public export
 data HandshakeType : Type where
@@ -463,7 +466,7 @@ namespace Parsing
 
   public export
   extension_type : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) ExtensionType
-  extension_type = under "extension type" $ magic (pair_to_vect . extension_type_to_id) (id_to_extension_type . vect_to_pair)
+  extension_type = under "extension type" $ magic (pair_to_vect . extension_type_to_id) (Just . id_to_extension_type . vect_to_pair)
 
   public export
   handshake_type : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) HandshakeType
