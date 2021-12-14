@@ -13,6 +13,7 @@ import Data.Bits
 import Data.List
 import Data.List1
 import Data.Vect
+import Data.DPair
 import Network.Socket
 import Network.TLS.Record
 import Utils.Bytes
@@ -69,11 +70,9 @@ curve_group_to_type SECP521r1 = MkDPair P521 %search
 
 public export
 curve_group_to_keypair_type : (g : SupportedGroup) -> Type
-curve_group_to_keypair_type X25519 = (Scalar {a=X25519_DH}, Element {a=X25519_DH})
-curve_group_to_keypair_type X448   = (Scalar {a=X448_DH}, Element {a=X448_DH})
-curve_group_to_keypair_type SECP256r1 = (Scalar {a=P256}, Element {a=P256})
-curve_group_to_keypair_type SECP384r1 = (Scalar {a=P384}, Element {a=P384})
-curve_group_to_keypair_type SECP521r1 = (Scalar {a=P521}, Element {a=P521})
+curve_group_to_keypair_type group =
+  let (ecdh ** _) = curve_group_to_type group
+  in (Scalar {a=ecdh}, Element {a=ecdh})
 
 public export
 deserialize_key : SupportedGroup -> List Bits8 -> 
@@ -84,36 +83,79 @@ deserialize_key group input =
   in
     (a ** dhc ** deserialize_pk @{dhc} input)
 
--- public export
--- record TLSInitalState where
---   constructor MkTLSInitalState
---   random : Vect 32 Bits8
---   session_id : List Bits8
---   cipher_suites : List1 CipherSuite
---   dh_keys : List1 (DPair SupportedGroup curve_group_to_keypair_type)
--- 
--- public export
--- data TLSStep : Type where
---   Init : TLSStep
--- 
--- public export
--- data TLSState : TLSStep -> Type where
---   TLS_Init : TLSInitalState -> TLSState Init
--- 
--- public export
--- tls_init_hello : MonadRandom m => String -> TLSState Init -> m (Handshake ClientHello)
--- tls_init_hello hostname (TLS_Init state) = do
---   random <- random_bytes _
---   session_id <- random_bytes 0x20 -- randomly generated for now until we implement PSK
---   pure $ ClientHello $ MkClientHello
---     TLS12 -- Always set to 1.2 as per the 1.3 spec
---     random
---     (toList session_id)
---     ( TLS_AES_128_GCM_SHA256 ::: [ TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256 ])
---     (singleton Null) -- We have zero intention of implementing compression
---     [ ServerName $ MkServerName $ DNS hostname ::: []
---     , SupportedGroups $ MkServerName supported_groups
---     , SignatureAlgorithms $ MkServerName $ RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256]
---     , KeyShare $ Mk $ map ?tls_init_hello_hole $ dh_keys state
---     , SupportedVersions $ Mk $ TLS13 ::: []
---     ]
+public export
+record TLSInitalState where
+  constructor MkTLSInitalState
+  server_hostname : String
+  client_random : Vect 32 Bits8
+  session_id : List Bits8
+  cipher_suites : List1 CipherSuite
+  signature_algos : List1 SignatureAlgorithm
+  dh_keys : List1 (DPair SupportedGroup (\g => curve_group_to_keypair_type g))
+
+public export
+record TLSClientHelloState where
+  constructor MkTLSClientHelloState
+  b_client_hello : List Bits8
+  client_random : Vect 32 Bits8
+  dh_keys : List1 (DPair SupportedGroup (\g => curve_group_to_keypair_type g))
+
+public export
+record TLS3ServerHelloState where
+  constructor MkTLS3ServerHelloState
+  digest_state : DPair Type ECDHCyclicGroup
+  shared_secret : List Bits8
+  cipher_suite : CipherSuite
+
+-- TODO: TLS2 Support
+public export
+record TLS2ServerHelloState where
+  constructor MkTLS2ServerHelloState
+  client_hello : Vect 32 Bits8
+  server_hello : Vect 32 Bits8
+  cipher_suite : CipherSuite
+
+public export
+data TLSStep : Type where
+  Init : TLSStep
+  ClientHello : TLSStep
+  ServerHello2 : TLSStep
+  ServerHello3 : TLSStep
+
+public export
+data TLSState : TLSStep -> Type where
+  TLS_Init : TLSInitalState -> TLSState Init
+  TLS_ClientHello : TLSClientHelloState -> TLSState ClientHello
+  TLS3_ServerHello : TLS3ServerHelloState -> TLSState ServerHello3
+  TLS2_ServerHello : TLS3ServerHelloState -> TLSState ServerHello2
+
+-- TODO: Is there a smarter way to do this
+encode_public_keys : (g : SupportedGroup) -> curve_group_to_keypair_type g -> (SupportedGroup, List Bits8)
+encode_public_keys X25519    (sk, pk) = (X25519,    serialize_pk {a=X25519_DH} pk)
+encode_public_keys X448      (sk, pk) = (X448,      serialize_pk {a=X448_DH}   pk)
+encode_public_keys SECP256r1 (sk, pk) = (SECP256r1, serialize_pk {a=P256}      pk)
+encode_public_keys SECP384r1 (sk, pk) = (SECP384r1, serialize_pk {a=P384}      pk)
+encode_public_keys SECP521r1 (sk, pk) = (SECP521r1, serialize_pk {a=P521}      pk)
+
+public export
+tls_init_to_clienthello : TLSState Init -> (Message.ClientHello, TLSState ClientHello)
+tls_init_to_clienthello (TLS_Init state) = 
+  let client_hello_object = MkClientHello
+        TLS12
+        state.client_random
+        state.session_id
+        state.cipher_suites
+        (singleton Null)
+        [ (_ ** ServerName $ DNS state.server_hostname ::: [])
+        , (_ ** SupportedGroups $ map fst state.dh_keys)
+        , (_ ** SignatureAlgorithms state.signature_algos)
+        , (_ ** KeyShare $ map (uncurry encode_public_keys) state.dh_keys)
+        , (_ ** SupportedVersions $ TLS13 ::: [])
+        ]
+      b_client_hello = 
+        (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
+  in (client_hello_object, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
+
+public export
+tls_clienthello_to_serverhello : TLSState ClientHello -> ServerHello -> 
+                                 Either String (Either (TLSState ServerHello2) (TLSState ServerHello3))
