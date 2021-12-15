@@ -11,20 +11,20 @@ import Utils.Bytes
 import Utils.Misc
 
 data XCurvesParameter : (n : Nat) -> Type where
-  XCParam : {n : Nat} -> 
-            (bits : Nat) -> 
-            (u : Integer) -> 
-            (a24 : Integer) -> 
-            (scalar_decoder : Vect n Bits8 -> Integer) -> 
+  XCParam : {n : Nat} ->
+            (bits : Nat) ->
+            (u : Integer) ->
+            (a24 : Integer) ->
+            (scalar_decoder : Vect n Bits8 -> Integer) ->
             (prime : Integer) ->
             XCurvesParameter n
 
 cswap : Integer -> Integer -> Integer -> (Integer, Integer)
-cswap swap x2 x3 = 
+cswap swap x2 x3 =
   let dummy = (0 - swap) .&. (x2 `xor` x3)
   in (x2 `xor` dummy, x3 `xor` dummy)
 
-mul_go : {n : Nat} -> XCurvesParameter n -> Integer -> Integer -> Integer -> Integer -> Integer -> Integer -> Integer -> Nat -> 
+mul_go : {n : Nat} -> XCurvesParameter n -> Integer -> Integer -> Integer -> Integer -> Integer -> Integer -> Integer -> Nat ->
          (Integer, Integer, Integer, Integer, Integer)
 mul_go param@(XCParam _ _ a24 _ prime) x1 x2 z2 x3 z3 swap k t =
   let mul = (\a,b => mul_mod a b prime)
@@ -52,7 +52,7 @@ mul_go param@(XCParam _ _ a24 _ prime) x1 x2 z2 x3 z3 swap k t =
 
 public export
 mul : {n : Nat} -> XCurvesParameter n -> Vect n Bits8 -> Vect n Bits8 -> Maybe (Vect n Bits8)
-mul {n} param@(XCParam bits _ a24 decode prime) k u = 
+mul {n} param@(XCParam bits _ a24 decode prime) k u =
   let u' = le_to_integer u
       k' = decode k
       (x2, x3, z2, z3, swap) = mul_go param u' 1 0 u' 1 0 k' (minus bits 1)
@@ -72,15 +72,15 @@ derive_public_key param k = mul param k $ generator param
 decode_scalar_25519 : Vect 32 Bits8 -> Integer
 decode_scalar_25519 =
   le_to_integer
-  . updateAt 0  (.&. 248) 
+  . updateAt 0  (.&. 248)
   . updateAt 31 (.&. 127)
-  . updateAt 31 (.|.  64) 
+  . updateAt 31 (.|.  64)
 
 decode_scalar_448 : Vect 56 Bits8 -> Integer
 decode_scalar_448 =
   le_to_integer
-  . updateAt 0  (.&. 252) 
-  . updateAt 55 (.|. 128) 
+  . updateAt 0  (.&. 252)
+  . updateAt 55 (.|. 128)
 
 public export
 x25519 : XCurvesParameter 32

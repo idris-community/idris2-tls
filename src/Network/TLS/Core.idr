@@ -95,7 +95,7 @@ curve_group_to_element_type : SupportedGroup -> Type
 curve_group_to_element_type group = Element @{(snd $ curve_group_to_type group)}
 
 public export
-deserialize_key : SupportedGroup -> List Bits8 -> 
+deserialize_key : SupportedGroup -> List Bits8 ->
                   DPair Type $ \a => DPair (ECDHCyclicGroup a) $ \wit => Maybe (Element @{wit})
 deserialize_key group input =
   let
@@ -149,11 +149,11 @@ data TLSState : TLSStep -> Type where
   TLS3_ServerHello : TLS3ServerHelloState -> TLSState ServerHello3
   TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
 
-encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) -> 
+encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
 encode_public_keys group (sk, pk) = (group, serialize_pk @{(snd $ curve_group_to_type group)} pk)
 
-key_exchange : (group : SupportedGroup) -> 
+key_exchange : (group : SupportedGroup) ->
                List Bits8 ->
                List (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g))) ->
                Maybe (List Bits8)
@@ -165,7 +165,7 @@ key_exchange group pk ((group' ** (sk, _)) :: xs) =
 
 public export
 tls_init_to_clienthello : TLSState Init -> (Message.ClientHello, TLSState ClientHello)
-tls_init_to_clienthello (TLS_Init state) = 
+tls_init_to_clienthello (TLS_Init state) =
   let client_hello_object = MkClientHello
         TLS12
         state.client_random
@@ -178,7 +178,7 @@ tls_init_to_clienthello (TLS_Init state) =
         , (_ ** KeyShare $ map (uncurry encode_public_keys) state.dh_keys)
         , (_ ** SupportedVersions $ TLS13 ::: [])
         ]
-      b_client_hello = 
+      b_client_hello =
         (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
   in (client_hello_object, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
 

@@ -121,9 +121,9 @@ gmult_core y1 y0 (h0, h0r, h1, h1r, h2, h2r) =
       v0 = (shiftL v0 i1)
       -- Modular reduction to GF[128]
       v2 = v2 `xor` v0              `xor` (shiftR v0 i1)  `xor` (shiftR v0 i2) `xor` (shiftR v0 i7)
-      v1 = v1 `xor` (shiftL v0 i63) `xor` (shiftL v0 i62) `xor` (shiftL v0 i57) 
-      v3 = v3 `xor` v1              `xor` (shiftR v1 i1)  `xor` (shiftR v1 i2) `xor` (shiftR v1 i7)  
-      v2 = v2 `xor` (shiftL v1 i63) `xor` (shiftL v1 i62) `xor` (shiftL v1 i57) 
+      v1 = v1 `xor` (shiftL v0 i63) `xor` (shiftL v0 i62) `xor` (shiftL v0 i57)
+      v3 = v3 `xor` v1              `xor` (shiftR v1 i1)  `xor` (shiftR v1 i2) `xor` (shiftR v1 i7)
+      v2 = v2 `xor` (shiftL v1 i63) `xor` (shiftL v1 i62) `xor` (shiftL v1 i57)
   in (v3, v2)
 
 export

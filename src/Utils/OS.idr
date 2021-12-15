@@ -23,7 +23,7 @@ Show OS where
   show Unix    = "unix"
 
 uname' : HasIO m => Buffer -> m String
-uname' buf = do 
+uname' buf = do
   _ <- primIO $ prim_io__uname buf
   str <- getString buf 0 65
   pure $ pack $ takeWhile (/= '\NUL') $ unpack str
@@ -41,7 +41,7 @@ detect_platform =
   if isWindows then Just Windows else
     case os of
       "darwin" => Just Darwin
-      "unix" => 
+      "unix" =>
         case uname of
           Just "Linux" => Just Linux
           Just _ => Just Unix

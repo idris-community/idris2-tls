@@ -39,7 +39,7 @@ data Platform : Type where
   Unix    : Platform
 
 uname' : Buffer -> IO String
-uname' buf = do 
+uname' buf = do
   _ <- primIO $ prim_io__uname buf
   str <- getString buf 0 65
   pure $ pack $ takeWhile (/= '\NUL') $ unpack str

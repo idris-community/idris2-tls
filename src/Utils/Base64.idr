@@ -1,4 +1,4 @@
-module Utils.Base64 
+module Utils.Base64
 
 import Control.Monad.Trans
 import Data.Bits
@@ -19,7 +19,7 @@ index_to_alphabet : List (Integer, Char)
 index_to_alphabet = zip [0..64] alphabets
 
 alphabet_to_index : List (Char, Integer)
-alphabet_to_index = zip alphabets [0..64] 
+alphabet_to_index = zip alphabets [0..64]
 
 export
 is_base64_char : Char -> Bool

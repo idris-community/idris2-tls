@@ -17,7 +17,7 @@ data SecretKey : Type where
 -- q = genprime(k-k/2) until q mod e /= 1
 -- e and (p-1)(q-1) should be coprimes
 generate_key_pair_with_e : Integer -> Integer -> Integer -> (PublicKey, SecretKey)
-generate_key_pair_with_e p q e = 
+generate_key_pair_with_e p q e =
   let n = p * q
       d = inv_mul_mod e ((p-1)*(q-1))
   in (MkPublicKey n e, MkSecretKey n e d)

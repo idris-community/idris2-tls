@@ -86,7 +86,7 @@ be_to_integer = le_to_integer . reverse
 
 public export
 be_to_integer' : List Bits8 -> Integer
-be_to_integer' = le_to_integer' . reverse 
+be_to_integer' = le_to_integer' . reverse
 
 public export
 integer_to_le : (n : Nat) -> Integer -> Vect n Bits8

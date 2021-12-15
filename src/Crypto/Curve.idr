@@ -34,8 +34,8 @@ ecdsa_sign {p} private_key message = do
   let (x, y) = to_affine $ mul k generator {p=p}
   let r = x `mod` (order {p=p})
   let s = mul_mod (inv_mul_mod k $ order {p=p}) (message + (r * private_key)) (order {p=p})
-  if (r == 0) || (s == 0) 
-     then ecdsa_sign {p=p} private_key message 
+  if (r == 0) || (s == 0)
+     then ecdsa_sign {p=p} private_key message
      else pure $ MkSignature public_key (r, s)
 
 public export

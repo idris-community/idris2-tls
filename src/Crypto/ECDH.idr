@@ -57,7 +57,7 @@ public export
 {p : _} -> Point p => ECDHCyclicGroup p where
   Scalar = Integer
   Element = p
-  diffie_hellman sk pk = 
+  diffie_hellman sk pk =
     let (x, _) = to_affine $ mul sk pk
         bytes = divCeilNZ (bits {p=p}) 8 SIsNonZero
     in Just $ toList $ integer_to_be bytes x
