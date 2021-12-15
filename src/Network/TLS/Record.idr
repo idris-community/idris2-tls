@@ -65,6 +65,11 @@ namespace Parsing
     $ lengthed_list 2 handshake
 
   export
+  no_id_handshake2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Record Handshake)
+  no_id_handshake2 = map (\a => Handshake a) (\(Handshake a) => a)
+    $ lengthed_list 2 handshake2
+
+  export
   no_id_application_data : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Record ApplicationData)
   no_id_application_data = map (\a => ApplicationData a) (\(ApplicationData a) => a)
     $ lengthed_list 2 token
@@ -90,9 +95,21 @@ namespace Parsing
     <|> (with_id_with_version no_id_application_data)
 
   export
+  arecord2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (TLSVersion, DPair _ Record)
+  arecord2 =
+    map fix_record_with_version hack_record_with_version
+    $ (with_id_with_version no_id_change_cipher_spec)
+    <|> (with_id_with_version no_id_handshake2)
+    <|> (with_id_with_version no_id_application_data)
+
+  export
   alert : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (AlertLevel, AlertDescription)
   alert = under "alert protocol" $ alert_level <*>> alert_description
 
   export
   alert_or_arecord : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Either (AlertLevel, AlertDescription) (TLSVersion, DPair _ Record))
   alert_or_arecord = alert <|> arecord
+
+  export
+  alert_or_arecord2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Either (AlertLevel, AlertDescription) (TLSVersion, DPair _ Record))
+  alert_or_arecord2 = alert <|> arecord2
