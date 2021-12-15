@@ -17,7 +17,7 @@ hkdf_expand_stream : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 ->
 hkdf_expand_stream algo prk info = stream_concat (snd <$> iterate go (Z, []))
   where
     go : (Nat, List Bits8) -> (Nat, List Bits8)
-    go (i, last) = 
+    go (i, last) =
       let i' = cast {to=Bits8} (S i)
           body = last ++ info ++ [i']
       in (S i, toList $ hmac algo prk body)
@@ -93,7 +93,7 @@ tls13_application_derive : (0 algo : Type) -> Hash algo => HandshakeKeys iv key 
 tls13_application_derive algo {iv} {key} (MkHandshakeKeys handshake_secret _ _ _ _ _ _) handshake_hash =
   let zeros = List.replicate (digest_nbyte {algo}) (the Bits8 0)
       empty_hash = toList $ hash algo []
-      derived_secret = 
+      derived_secret =
         tls13_hkdf_expand_label algo handshake_secret (encode_ascii "derived") empty_hash $ digest_nbyte {algo}
       master_secret = toList $ hkdf_extract algo (toList derived_secret) zeros
       client_application_traffic_secret = toList $

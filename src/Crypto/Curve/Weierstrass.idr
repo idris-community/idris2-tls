@@ -71,7 +71,7 @@ WeierstrassPoint p => Point p where
   infinity = from_jacobian (0, 1, 0)
   generator = g
   bits = bits' {p=p}
-  to_affine point = 
+  to_affine point =
     let (x, y, z) = to_jacobian point
         m = prime {p=p}
         z' = inv_mul_mod z m
@@ -106,7 +106,7 @@ WeierstrassPoint p => Point p where
     let b   = b_coefficent {p=p}
     let rhs = ((pow_mod x 3 pri) + (mul_mod x a pri) + b) `mod'` pri
     guard $ lhs == rhs
-    
+
     pure $ from_jacobian (x, y, 1)
   decode _ = Nothing
 
@@ -116,9 +116,9 @@ data P256 : Type where
 
 public export
 WeierstrassPoint P256 where
-  prime = 
+  prime =
     0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff
-  a_coefficent = 
+  a_coefficent =
     0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc
   b_coefficent =
     0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b
@@ -130,7 +130,7 @@ WeierstrassPoint P256 where
     , 1 )
   to_from_jacobian x = Refl
   bits' = 256
-  curve_n = 
+  curve_n =
     0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551
 
 public export
@@ -142,14 +142,14 @@ WeierstrassPoint P384 where
   prime =
     0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff
   a_coefficent =
-    0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc 
+    0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000fffffffc
   b_coefficent =
     0xb3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef
   from_jacobian = MkP384
   to_jacobian (MkP384 p) = p
   g = MkP384
     ( 0xaa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7
-    , 0x3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f    
+    , 0x3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f
     , 1 )
   to_from_jacobian x = Refl
   bits' = 384

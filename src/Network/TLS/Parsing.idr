@@ -159,7 +159,7 @@ is cs = MkParserializer (const $ toList cs) $ do
   let cs' = map get bs
   case cs == cs' of
     True => pure ()
-    False => 
+    False =>
       let
         (begin, end) = mapHom pos (head bs, last bs)
       in

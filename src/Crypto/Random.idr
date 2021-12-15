@@ -44,7 +44,7 @@ uniform_random : MonadRandom m => Integer -> m Integer
 uniform_random {m} upper_bound =
   if upper_bound < 0 then negate <$> (uniform_random {m=m} $ abs upper_bound)
     else if upper_bound < 2 then pure 0
-      else 
+      else
         let bytes = bytes_needed upper_bound
         in (`mod` upper_bound) <$> random_num_uniform bytes ((bit bytes) `mod` upper_bound)
 
@@ -55,7 +55,7 @@ uniform_random' {m} lower_bound upper_bound = do
   pure (r + lower_bound)
 
 some_primes : List Integer
-some_primes = 
+some_primes =
   [ 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73
   , 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157
   , 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241
@@ -86,7 +86,7 @@ witness_loop n a r d =
   where
     go : Integer -> Integer -> Integer -> Nat -> Integer -> Bool
     go x n a Z d = True
-    go x n a (S r) d = 
+    go x n a (S r) d =
       let x' = pow_mod x 2 n
       in (x' /= n - 1) && (go x' n a r d)
 
@@ -108,12 +108,12 @@ miller_test_rounds n =
 -- TODO: should adjust the value 64 based on how many bits there are for efficency
 -- FIPS recommends 40 rounds for 1024 bits, 56 for 2048 bits, 64 for 3072 bits
 is_extremely_likely_prime' : MonadRandom m => Nat -> Integer -> m Bool
-is_extremely_likely_prime' miller_rounds p = 
-  if not $ is_probably_prime p then pure False else miller_test miller_rounds p 
+is_extremely_likely_prime' miller_rounds p =
+  if not $ is_probably_prime p then pure False else miller_test miller_rounds p
 
 public export
 is_extremely_likely_prime : MonadRandom m => Integer -> m Bool
-is_extremely_likely_prime p = 
+is_extremely_likely_prime p =
   if p < 2 then pure False
     else if p < 4 then pure True
       else is_extremely_likely_prime' 64 p

@@ -39,7 +39,7 @@ s_and False True = False
 
 public export
 mmod : Integer -> (m : Nat) -> {auto 0 ok : NonZero m} -> Nat
-mmod n m = 
+mmod n m =
   let m' = natToInteger m
   in integerToNat ((m' + n `mod` m') `mod` m')
 
@@ -48,7 +48,7 @@ mod': Integer -> Integer -> Integer
 mod' _ 0 = 0
 mod' n m = (m + n `mod` m) `mod` m
 
-public export 
+public export
 s_eq : (Bits b, Eq b) => Vect n b -> Vect n b -> Bool
 s_eq a b = (== zeroBits) $ foldr (.|.) zeroBits $ zipWith xor a b
 
@@ -96,8 +96,8 @@ concat_group_id (S n) m xs with (splitAt m xs) proof prf
   _ | (l, r) = rewrite concat_group_id n m r in split_at_concat_rev m xs prf
 
 pow_mod' : Integer -> Integer -> Integer -> Integer -> Integer
-pow_mod' n x y m = 
-  if y == 0 
+pow_mod' n x y m =
+  if y == 0
      then n
      else let n' = (n * x) `mod` m
               y' = shiftR y 1
@@ -109,8 +109,8 @@ pow_mod : Integer -> Integer -> Integer -> Integer
 pow_mod x y m = pow_mod' 1 (x `mod'` m) (y `mod'` m) m
 
 mul_mod' : Integer -> Integer -> Integer -> Integer -> Integer
-mul_mod' n x y m = 
-  if y == 0 
+mul_mod' n x y m =
+  if y == 0
      then n
      else let n' = (n + x) `mod` m
               y' = shiftR y 1
@@ -125,11 +125,11 @@ public export
 quot_rem : Integer -> Integer -> (Integer, Integer)
 quot_rem val d =
   let dividend = if d < 0 then -(val `div` abs d) else val `div` d
-      remainder = abs (val - dividend * d) 
+      remainder = abs (val - dividend * d)
   in (dividend, remainder)
 
 public export
-gcd' : Integer -> Integer -> Integer 
+gcd' : Integer -> Integer -> Integer
 gcd' a 0 = a
 gcd' a b = gcd' b (a `mod` b)
 
@@ -142,7 +142,7 @@ are_coprimes x y = (gcd' x y) == 1
 public export
 extended_gcd : Integer -> Integer -> (Integer, Integer)
 extended_gcd a 0 = (1, 0)
-extended_gcd a b = 
+extended_gcd a b =
   let (q, r) = quot_rem a b
       (s, t) = extended_gcd b r
   in (t, s - q * t)
@@ -159,7 +159,7 @@ forM : Applicative f => (n : Nat) -> (f b) -> f (Vect n b)
 forM n f = for (the (Vect n (Fin n)) range) (const f)
 
 utf8_bytelen : Bits8 -> Maybe (Bits8, Nat)
-utf8_bytelen x = 
+utf8_bytelen x =
   if (x .&. 0b01111111) == x then Just (x, 0) -- ascii
     else if (shiftR x $ Element 5 $ lteAddRight _) == 0b110   then Just (x .&. 0b0011111, 1)
     else if (shiftR x $ Element 4 $ lteAddRight _) == 0b1110  then Just (x .&. 0b0001111, 2)
@@ -175,12 +175,12 @@ utf8_pushbits acc (x::xs) = utf8_pushbits ((shiftL acc 6) .|. (cast x)) xs
 
 public export
 utf8_decode : List Bits8 -> Maybe String
-utf8_decode = go [] 
+utf8_decode = go []
   where
     go : List Char -> List Bits8 -> Maybe String
     go acc [] = Just $ pack $ reverse acc
     go acc (x :: xs) = do
-      (x, l) <- utf8_bytelen x 
+      (x, l) <- utf8_bytelen x
       let (y,ys) = splitAt l xs
       guard (length y == l)
       y <- traverse utf8_unmask y

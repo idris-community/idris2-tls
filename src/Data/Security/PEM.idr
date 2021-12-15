@@ -55,5 +55,5 @@ parse_pem_blob = do
   _ <- string "-----"
   spaces
   case base64_decode $ pack $ concat content of
-    Right str => pure $ MkPEMBlobk label str 
+    Right str => pure $ MkPEMBlobk label str
     Left  err => fail $ "failed parsing PEM content: " <+> err

@@ -9,12 +9,12 @@ import Data.Vect
 import Utils.Bytes
 
 public export
-Key : Type 
+Key : Type
 Key = Vect 8 Bits32 -- 32 * 8 = 256
 
 public export
 Nonce : Type
-Nonce = Vect 3 Bits32 
+Nonce = Vect 3 Bits32
 
 public export
 ChaChaState : Type

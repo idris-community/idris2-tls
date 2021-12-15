@@ -158,7 +158,7 @@ data SupportedGroup : Type where
 
 public export
 Eq SupportedGroup where
-  X25519    == X25519    = True 
+  X25519    == X25519    = True
   X448      == X448      = True
   SECP256r1 == SECP256r1 = True
   SECP384r1 == SECP384r1 = True
@@ -335,7 +335,7 @@ Show ExtensionType where
   show SupportedVersions   = "SupportedVersions"
   show SignatureAlgorithms = "SignatureAlgorithms"
   show KeyShare            = "KeyShare"
-  show (Unknown _)         = "Unknown"
+  show (Unknown (a, b))    = "Unknown " <+> show_hex a <+> " " <+> show_hex b
 
 public export
 extension_type_to_id : ExtensionType -> (Bits8, Bits8)

@@ -81,7 +81,7 @@ tls_test target_hostname = do
         TLS12
         random
         (toList session)
-        ( TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 ::: 
+        ( TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 :::
         [ TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
         , TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
         , TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 ])
@@ -99,7 +99,7 @@ tls_test target_hostname = do
   _ <- send_bytes sock b_client_hello
 
   putStrLn $ "reading server hello"
-  (b_server_response, (Right (Right (TLS12, MkDPair _ (Handshake [MkDPair _ (ServerHello server_hello)]))))) 
+  (b_server_response, (Right (Right (TLS12, MkDPair _ (Handshake [MkDPair _ (ServerHello server_hello)])))))
     <- smart_read {i = List (Posed Bits8)} sock alert_or_arecord2.decode
   | (b_server_response, server_response) => (putStrLn $ show $ length b_server_response) *> (putStrLn $ "unexpected server response: " <+> show server_response)
   putStrLn $ "server hello: " <+> show server_hello
@@ -110,7 +110,7 @@ tls_test target_hostname = do
   let TLS12 = get_server_version server_hello
   | other => putStrLn $ "unexpected TLS version: " <+> (show other)
 
-  (b_server_response, (Right (Right (TLS12, MkDPair _ (Handshake [MkDPair _ (Certificate server_certificate)]))))) 
+  (b_server_response, (Right (Right (TLS12, MkDPair _ (Handshake [MkDPair _ (Certificate server_certificate)])))))
     <- smart_read {i = List (Posed Bits8)} sock alert_or_arecord2.decode
   | (sus, other) => (putStrLn (xxd sus)) *> (putStrLn (show $ length sus)) *> print other
 
