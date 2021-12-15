@@ -231,6 +231,12 @@ namespace Parsing
     <*>> (under "certificate extensions" $ lengthed_list 2 token)
 
   export
+  no_id_certificate2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake Certificate)
+  no_id_certificate2 = map (\(b) => Certificate (MkCertificate [] b [])) (\(Certificate (MkCertificate a b c)) => b)
+    $ lengthed 3
+    $ (under "certificates 1.2" $ lengthed 3 $ under "certificate list 1.2" $ lengthed_list1 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
+
+  export
   no_id_certificate_verify : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake CertificateVerify)
   no_id_certificate_verify = map (\(a,b) => CertificateVerify (MkCertificateVerify a b)) (\(CertificateVerify (MkCertificateVerify a b)) => (a,b))
     $ lengthed 3
@@ -266,3 +272,15 @@ namespace Parsing
     <|> (with_id no_id_certificate_verify)
     <|> (with_id no_id_finished)
     <|> (with_id no_id_new_session_ticket)
+
+  export
+  handshake2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (DPair _ Handshake)
+  handshake2 = map fix_handshake hack_handshake
+    $ (with_id no_id_client_hello)
+    <|> (with_id no_id_server_hello)
+    <|> (with_id no_id_encrypted_extensions)
+    <|> (with_id no_id_certificate2)
+    <|> (with_id no_id_certificate_verify)
+    <|> (with_id no_id_finished)
+    <|> (with_id no_id_new_session_ticket)
+

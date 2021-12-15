@@ -18,6 +18,10 @@ interface ECDHCyclicGroup (0 a : Type) where
   serialize_pk : Element -> List Bits8
 
 public export
+deserialize_then_dh : ECDHCyclicGroup dh => Scalar {a=dh} -> List Bits8 -> Maybe (List Bits8)
+deserialize_then_dh sk pk = (deserialize_pk {a=dh} pk) >>= (diffie_hellman sk)
+
+public export
 data X25519_DH : Type where
 
 public export

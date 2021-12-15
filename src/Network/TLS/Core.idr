@@ -20,6 +20,7 @@ import Utils.Bytes
 import Utils.Misc
 import Utils.Network
 import Utils.Parser
+import Decidable.Equality
 
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
@@ -60,6 +61,17 @@ get_server_handshake_key hello = go hello.extensions
   go ((KeyShare ** (KeyShare x)) :: xs) = Right x
   go (x :: xs) = go xs
 
+
+public export
+ciphersuite_to_hash_type : CipherSuite -> (DPair Type Hash)
+ciphersuite_to_hash_type TLS_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_hash_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+
 public export
 curve_group_to_type : SupportedGroup -> (DPair Type ECDHCyclicGroup)
 curve_group_to_type X25519 = MkDPair X25519_DH %search
@@ -73,6 +85,14 @@ curve_group_to_keypair_type : (g : SupportedGroup) -> Type
 curve_group_to_keypair_type group =
   let (ecdh ** _) = curve_group_to_type group
   in (Scalar {a=ecdh}, Element {a=ecdh})
+
+public export
+curve_group_to_scalar_type : SupportedGroup -> Type
+curve_group_to_scalar_type group = Scalar @{(snd $ curve_group_to_type group)}
+
+public export
+curve_group_to_element_type : SupportedGroup -> Type
+curve_group_to_element_type group = Element @{(snd $ curve_group_to_type group)}
 
 public export
 deserialize_key : SupportedGroup -> List Bits8 -> 
@@ -91,19 +111,19 @@ record TLSInitalState where
   session_id : List Bits8
   cipher_suites : List1 CipherSuite
   signature_algos : List1 SignatureAlgorithm
-  dh_keys : List1 (DPair SupportedGroup (\g => curve_group_to_keypair_type g))
+  dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
 public export
 record TLSClientHelloState where
   constructor MkTLSClientHelloState
   b_client_hello : List Bits8
   client_random : Vect 32 Bits8
-  dh_keys : List1 (DPair SupportedGroup (\g => curve_group_to_keypair_type g))
+  dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
 public export
 record TLS3ServerHelloState where
   constructor MkTLS3ServerHelloState
-  digest_state : DPair Type ECDHCyclicGroup
+  digest_state : Hash a => a
   shared_secret : List Bits8
   cipher_suite : CipherSuite
 
@@ -111,9 +131,9 @@ record TLS3ServerHelloState where
 public export
 record TLS2ServerHelloState where
   constructor MkTLS2ServerHelloState
-  client_hello : Vect 32 Bits8
-  server_hello : Vect 32 Bits8
-  cipher_suite : CipherSuite
+  client_random : Vect 32 Bits8
+  server_random : Vect 32 Bits8
+  cipher_suite  : CipherSuite
 
 public export
 data TLSStep : Type where
@@ -127,15 +147,21 @@ data TLSState : TLSStep -> Type where
   TLS_Init : TLSInitalState -> TLSState Init
   TLS_ClientHello : TLSClientHelloState -> TLSState ClientHello
   TLS3_ServerHello : TLS3ServerHelloState -> TLSState ServerHello3
-  TLS2_ServerHello : TLS3ServerHelloState -> TLSState ServerHello2
+  TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
 
--- TODO: Is there a smarter way to do this
-encode_public_keys : (g : SupportedGroup) -> curve_group_to_keypair_type g -> (SupportedGroup, List Bits8)
-encode_public_keys X25519    (sk, pk) = (X25519,    serialize_pk {a=X25519_DH} pk)
-encode_public_keys X448      (sk, pk) = (X448,      serialize_pk {a=X448_DH}   pk)
-encode_public_keys SECP256r1 (sk, pk) = (SECP256r1, serialize_pk {a=P256}      pk)
-encode_public_keys SECP384r1 (sk, pk) = (SECP384r1, serialize_pk {a=P384}      pk)
-encode_public_keys SECP521r1 (sk, pk) = (SECP521r1, serialize_pk {a=P521}      pk)
+encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) -> 
+                     (SupportedGroup, List Bits8)
+encode_public_keys group (sk, pk) = (group, serialize_pk @{(snd $ curve_group_to_type group)} pk)
+
+key_exchange : (group : SupportedGroup) -> 
+               List Bits8 ->
+               List (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g))) ->
+               Maybe (List Bits8)
+key_exchange group pk [] = Nothing
+key_exchange group pk ((group' ** (sk, _)) :: xs) =
+  case decEq @{FromEq} group group' of
+    Yes _ => deserialize_then_dh @{(snd $ curve_group_to_type group')} sk pk
+    No _ => key_exchange group pk xs
 
 public export
 tls_init_to_clienthello : TLSState Init -> (Message.ClientHello, TLSState ClientHello)
@@ -157,5 +183,19 @@ tls_init_to_clienthello (TLS_Init state) =
   in (client_hello_object, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
 
 public export
-tls_clienthello_to_serverhello : TLSState ClientHello -> ServerHello -> 
+tls_clienthello_to_serverhello : TLSState ClientHello -> ServerHello -> List Bits8 ->
                                  Either String (Either (TLSState ServerHello2) (TLSState ServerHello3))
+tls_clienthello_to_serverhello (TLS_ClientHello state) server_hello b_server_hello =
+  case get_server_version server_hello of
+    TLS13 => do
+      let (hash_algo ** _) = ciphersuite_to_hash_type server_hello.cipher_suite
+      let digest_state = update b_server_hello $ update state.b_client_hello $ init hash_algo
+      (group, pk) <- get_server_handshake_key server_hello
+      shared_secret <- maybe_to_either (key_exchange group pk $ toList state.dh_keys) "server sent invalid key"
+      Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState digest_state shared_secret server_hello.cipher_suite
+    TLS12 =>
+      Right
+      $ Left
+      $ TLS2_ServerHello
+      $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite
+    tlsvr => Left $ "unsupported version: " <+> show tlsvr
