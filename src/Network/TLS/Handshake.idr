@@ -234,7 +234,7 @@ namespace Parsing
   no_id_certificate2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake Certificate)
   no_id_certificate2 = map (\(b) => Certificate (MkCertificate [] b [])) (\(Certificate (MkCertificate a b c)) => b)
     $ lengthed 3
-    $ (under "certificates 1.2" $ lengthed 3 $ under "certificate list 1.2" $ lengthed_list1 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
+    $ (under "certificate list 1.2" $ lengthed_list1 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
 
   export
   no_id_certificate_verify : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake CertificateVerify)
