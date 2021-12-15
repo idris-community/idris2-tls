@@ -94,7 +94,7 @@ tls_test target_hostname = do
         ]
 
   putStrLn $ "sending client hello"
-  let b_client_hello = (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
+  let b_client_hello = (arecord2 {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
   putStrLn $ "client hello: " <+> xxd b_client_hello
   _ <- send_bytes sock b_client_hello
 
