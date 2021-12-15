@@ -1,6 +1,5 @@
 module Crypto.AES
 
-import Control.Monad.State
 import Data.Bits
 import Data.DPair
 import Data.Fin
@@ -10,20 +9,16 @@ import Data.Stream
 import Data.Vect
 import Utils.Misc
 
-public export
 matmul : Num a => {p : _} -> (op : Vect m a -> Vect m b -> c) -> Vect n (Vect m a) -> Vect m (Vect p b) -> Vect n (Vect p c)
 matmul op [] ys = []
 matmul op (x :: xs) ys = map (op x) (transpose ys) :: matmul op xs ys
 
-public export
 vecxor : Bits a => Vect n a -> Vect n a -> Vect n a
 vecxor = zipWith xor
 
-public export
 matxor : Bits a => Vect n (Vect m a) -> Vect n (Vect m a) -> Vect n (Vect m a)
 matxor x y = zipWith vecxor x y
 
-public export
 sbox : Vect 256 Bits8
 sbox =
   [ 0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76
@@ -44,7 +39,6 @@ sbox =
   , 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
   ]
 
-public export
 inv_sbox : Vect 256 Bits8
 inv_sbox =
   [ 0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb
@@ -65,7 +59,6 @@ inv_sbox =
   , 0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
   ]
 
-public export
 gbox_9 : Vect 256 Bits8
 gbox_9 =
   [ 0x00, 0x09, 0x12, 0x1b, 0x24, 0x2d, 0x36, 0x3f, 0x48, 0x41, 0x5a, 0x53, 0x6c, 0x65, 0x7e, 0x77
@@ -86,7 +79,6 @@ gbox_9 =
   , 0x31, 0x38, 0x23, 0x2a, 0x15, 0x1c, 0x07, 0x0e, 0x79, 0x70, 0x6b, 0x62, 0x5d, 0x54, 0x4f, 0x46
   ]
 
-public export
 gbox_11 : Vect 256 Bits8
 gbox_11 =
   [ 0x00, 0x0b, 0x16, 0x1d, 0x2c, 0x27, 0x3a, 0x31, 0x58, 0x53, 0x4e, 0x45, 0x74, 0x7f, 0x62, 0x69
@@ -107,7 +99,6 @@ gbox_11 =
   , 0xca, 0xc1, 0xdc, 0xd7, 0xe6, 0xed, 0xf0, 0xfb, 0x92, 0x99, 0x84, 0x8f, 0xbe, 0xb5, 0xa8, 0xa3
   ]
 
-public export
 gbox_13 : Vect 256 Bits8
 gbox_13 =
   [ 0x00, 0x0d, 0x1a, 0x17, 0x34, 0x39, 0x2e, 0x23, 0x68, 0x65, 0x72, 0x7f, 0x5c, 0x51, 0x46, 0x4b
@@ -128,7 +119,6 @@ gbox_13 =
   , 0xdc, 0xd1, 0xc6, 0xcb, 0xe8, 0xe5, 0xf2, 0xff, 0xb4, 0xb9, 0xae, 0xa3, 0x80, 0x8d, 0x9a, 0x97
   ]
 
-public export
 gbox_14 : Vect 256 Bits8
 gbox_14 =
   [ 0x00, 0x0e, 0x1c, 0x12, 0x38, 0x36, 0x24, 0x2a, 0x70, 0x7e, 0x6c, 0x62, 0x48, 0x46, 0x54, 0x5a
@@ -149,92 +139,74 @@ gbox_14 =
   , 0xd7, 0xd9, 0xcb, 0xc5, 0xef, 0xe1, 0xf3, 0xfd, 0xa7, 0xa9, 0xbb, 0xb5, 0x9f, 0x91, 0x83, 0x8d
   ]
 
-public export
 data G : Type where
   G1 : G
   G2 : G
   G3 : G
 
-public export
 data G' : Type where
   G9 : G'
   G11 : G'
   G13 : G'
   G14 : G'
 
-public export
 mix_columns_mat : Vect 4 (Vect 4 G)
 mix_columns_mat = [[G2, G1, G1, G3], [G3, G2, G1, G1], [G1, G3, G2, G1], [G1, G1, G3, G2]]
 
-public export
 inv_mix_columns_mat : Vect 4 (Vect 4 G')
 inv_mix_columns_mat = [[G14, G9, G13, G11], [G11, G14, G9, G13], [G13, G11, G14, G9], [G9, G13, G11, G14]]
 
 ||| RotWord
-public export
 rot_word : {n : Nat} -> Nat -> Vect (S n) a -> Vect (S n) a
 rot_word k = take (S n) . drop k . cycle
 
 ||| InvRotWord
-public export
 inv_rot_word : {n : Nat} -> Nat -> Vect (S n) a -> Vect (S n) a
 inv_rot_word k = take (S n) . drop (n * k) . cycle
 
-public export
 sub_byte : Bits8 -> Bits8
 sub_byte x = index (b8_to_fin x) sbox
 
-public export
 inv_sub_byte : Bits8 -> Bits8
 inv_sub_byte x = index (b8_to_fin x) inv_sbox
 
-||| wiki: SubWord
-public export
+||| SubWord
 sub_word : Vect m Bits8 -> Vect m Bits8
 sub_word = map sub_byte
 
-||| wiki: InvSubWord
-public export
+||| InvSubWord
 inv_sub_word : Vect m Bits8 -> Vect m Bits8
 inv_sub_word = map inv_sub_byte
 
-||| wiki: SubBytes
-public export
+||| SubBytes
 sub_bytes : Vect n (Vect m Bits8) -> Vect n (Vect m Bits8)
 sub_bytes = map sub_word
 
-||| wiki: InvSubBytes
-public export
+||| InvSubBytes
 inv_sub_bytes : Vect n (Vect m Bits8) -> Vect n (Vect m Bits8)
 inv_sub_bytes = map inv_sub_word
 
-public export
 shift_rows' : {m : _} -> Nat -> Vect n (Vect (S m) Bits8) -> Vect n (Vect (S m) Bits8)
 shift_rows' n [] = []
 shift_rows' n (x :: xs) = rot_word n x :: shift_rows' (S n) xs
 
-||| wiki: ShiftRows
-public export
+||| ShiftRows
 shift_rows : {n, m : Nat} -> Vect (S n) (Vect m Bits8) -> Vect (S n) (Vect m Bits8)
 shift_rows = transpose . shift_rows' Z . transpose
 
-public export
 inv_shift_rows' : {m : _} -> Nat -> Vect n (Vect (S m) Bits8) -> Vect n (Vect (S m) Bits8)
 inv_shift_rows' n [] = []
 inv_shift_rows' n (x :: xs) = inv_rot_word n x :: inv_shift_rows' (S n) xs
 
-||| wiki: ShiftRows
-public export
+||| ShiftRows
 inv_shift_rows : {n, m : Nat} -> Vect (S n) (Vect m Bits8) -> Vect (S n) (Vect m Bits8)
 inv_shift_rows = transpose . inv_shift_rows' Z . transpose
 
-public export
 gmod : Bits8 -> G -> Bits8
 gmod x G1 = x
 gmod x G2 = (if x < 128 then id else (xor 0x1b)) $ shiftL x (Element 1 $ LTESucc $ LTESucc $ LTEZero)
 gmod x G3 = xor (gmod x G2) x
 
-public export
 inv_gmod : Bits8 -> G' -> Bits8
 inv_gmod x g =
   index (b8_to_fin x) $ case g of
@@ -243,24 +215,20 @@ inv_gmod x g =
     G13 => gbox_13
     G14 => gbox_14
 
-||| wiki: MixColumns
-public export
+||| MixColumns
 mix_columns : Vect n (Vect 4 Bits8) -> Vect n (Vect 4 Bits8)
 mix_columns xs = matmul (\a, b => foldl xor 0 $ zipWith gmod a b) xs mix_columns_mat
 
-public export
 inv_mix_columns : Vect n (Vect 4 Bits8) -> Vect n (Vect 4 Bits8)
 inv_mix_columns xs = matmul (\a, b => foldl xor 0 $ zipWith inv_gmod a b) xs inv_mix_columns_mat
 
-||| Stream of wiki: Rcon
-public export
+||| Rcon
 rcons : Stream Bits8
 rcons = go 1
   where
   go : Bits8 -> Stream Bits8
   go x = x :: go ((if x < 0x80 then id else xor (0x1B)) $ 2 * x)
 
-public export
 expand_key' : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> Fin n_k -> (rcs : Stream Bits8) -> (prev_block : Vect n_k (Vect n_b Bits8)) -> Stream (Vect n_b Bits8)
 expand_key' {n_b = S n_b'} counter (rc :: rcs) (x :: xs) =
   let
@@ -270,32 +238,15 @@ expand_key' {n_b = S n_b'} counter (rc :: rcs) (x :: xs) =
       FZ => let z = (zipWith xor (rc :: replicate _ 0) $ zipWith xor x $ sub_word $ rot_word 1 $ y) in z :: expand_key' Data.Fin.last rcs (snoc xs z)
       (FS counter') => let z = zipWith xor x y in z :: expand_key' (weaken counter') (rc :: rcs) (snoc xs z)
 
-public export
 expand_key : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> Vect n_k (Vect n_b Bits8) -> Stream (Vect n_b Bits8)
 expand_key {n_k = S n_k'} k = expand_key' FZ rcons k
 
-public export
-mk_round_keys' : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> (m : Nat) -> Vect n_k (Vect n_b Bits8) -> Stream (Vect m (Vect n_b Bits8))
-mk_round_keys' m k = chunk m $ prepend (toList k) $ expand_key k
-
-public export
-mk_round_keys : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> Vect n_k (Vect n_b Bits8) -> Stream (Vect 4 (Vect n_b Bits8))
-mk_round_keys = mk_round_keys' 4
-
-public export
-mk_inv_round_keys' : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> (m, n_main_rounds : Nat) -> Vect n_k (Vect n_b Bits8) -> Stream (Vect m (Vect n_b Bits8))
-mk_inv_round_keys' m n_main_rounds k = cycle $ reverse $ Stream.take (S (S n_main_rounds)) $ mk_round_keys' m k
-
-public export
-mk_inv_round_keys : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> (n_main_rounds : Nat) -> Vect n_k (Vect n_b Bits8) -> Stream (Vect 4 (Vect n_b Bits8))
-mk_inv_round_keys = mk_inv_round_keys' 4
-
-public export
-next_round_key : State (Stream a) a
-next_round_key = do
-  (x :: xs) <- get
-  put xs
-  pure x
+mk_round_keys : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> (n_main_rounds : Nat) -> (key : Vect n_k (Vect n_b Bits8)) -> (Vect 4 (Vect n_b Bits8), Vect n_main_rounds (Vect 4 (Vect n_b Bits8)), Vect 4 (Vect n_b Bits8))
+mk_round_keys n_main_rounds k =
+  let
+    (rk_init :: rks) = Stream.take (S (S n_main_rounds)) $ chunk _ $ prepend (toList k) $ expand_key k
+  in
+    (rk_init, unsnoc rks)
 
 public export
 data Mode : Type where
@@ -321,46 +272,36 @@ get_main_rounds AES128 = 9
 get_main_rounds AES192 = 11
 get_main_rounds AES256 = 13
 
-public export
 encrypt_block' : {n_k : _} -> {auto 0 ok : NonZero n_k} -> (n_main_rounds : Nat) -> (key : Vect n_k (Vect 4 Bits8)) -> (state : Vect 4 (Vect 4 Bits8)) -> Vect 4 (Vect 4 Bits8)
-encrypt_block' n_main_rounds k s =
-  evalState (mk_round_keys k) $ do
+encrypt_block' n_main_rounds k x =
+  let
+    (init_rk, main_rks, final_rk) = mk_round_keys n_main_rounds k
     -- initial round
-    s <- next_round_key <&> matxor s
+    x = matxor x init_rk
     -- main rounds
-    s <- do_main_rounds last s
+    x = foldl (flip $ \rk => matxor rk . mix_columns . shift_rows . sub_bytes) x main_rks
     -- final round
-    s <- next_round_key <&> \rk => matxor rk $ shift_rows $ sub_bytes s
-    pure s
-  where
-  do_main_rounds : Fin (S n_main_rounds) -> Vect 4 (Vect 4 Bits8) -> State (Stream $ Vect 4 (Vect 4 Bits8)) (Vect 4 (Vect 4 Bits8))
-  do_main_rounds FZ x = pure x
-  do_main_rounds (FS k) x = do
-    x <- next_round_key <&> \rk => matxor rk $ mix_columns $ shift_rows $ sub_bytes x
-    do_main_rounds (weaken k) x
+    x = matxor final_rk $ shift_rows $ sub_bytes x
+  in
+    x
 
-public export
+export
 encrypt_block : (mode : Mode) -> (key : Vect (get_n_k mode) (Vect 4 Bits8)) -> (state : Vect 4 (Vect 4 Bits8)) -> Vect 4 (Vect 4 Bits8)
 encrypt_block mode k s = encrypt_block' {ok = n_k_never_Z mode} (get_main_rounds mode) k s
 
-public export
 decrypt_block' : {n_k : _} -> {auto 0 ok : NonZero n_k} -> (n_main_rounds : Nat) -> (key : Vect n_k (Vect 4 Bits8)) -> (state : Vect 4 (Vect 4 Bits8)) -> Vect 4 (Vect 4 Bits8)
-decrypt_block' n_main_rounds k s =
-  evalState (mk_inv_round_keys n_main_rounds k) $ do
+decrypt_block' n_main_rounds k x =
+  let
+    (init_rk, main_rks, final_rk) = mk_round_keys n_main_rounds k
     -- initial round
-    s <- next_round_key <&> matxor s
+    x = matxor x init_rk
     -- main rounds
-    s <- do_main_rounds last s
+    x = foldl (flip $ \rk => inv_mix_columns . matxor rk . inv_sub_bytes . inv_shift_rows) x main_rks
     -- final round
-    s <- next_round_key <&> \rk => matxor rk $ inv_sub_bytes $ inv_shift_rows s
-    pure s
-  where
-  do_main_rounds : Fin (S n_main_rounds) -> Vect 4 (Vect 4 Bits8) -> State (Stream $ Vect 4 (Vect 4 Bits8)) (Vect 4 (Vect 4 Bits8))
-  do_main_rounds FZ x = pure x
-  do_main_rounds (FS k) x = do
-    x <- next_round_key <&> \rk => inv_mix_columns $ matxor rk $ inv_sub_bytes $ inv_shift_rows x
-    do_main_rounds (weaken k) x
+    x = matxor final_rk $ inv_sub_bytes $ inv_shift_rows x
+  in
+    x
 
-public export
+export
 decrypt_block : (mode : Mode) -> (key : Vect (get_n_k mode) (Vect 4 Bits8)) -> (state : Vect 4 (Vect 4 Bits8)) -> Vect 4 (Vect 4 Bits8)
-decrypt_block mode k s = decrypt_block' {ok = n_k_never_Z mode} (get_main_rounds mode) k s
+decrypt_block mode k x = decrypt_block' {ok = n_k_never_Z mode} (get_main_rounds mode) k s
