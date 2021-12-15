@@ -1,4 +1,4 @@
-module Crypto.HKDF
+module Network.TLS.HKDF
 
 import Crypto.Hash
 import Data.Bits

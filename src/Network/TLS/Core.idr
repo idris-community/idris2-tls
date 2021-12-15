@@ -6,7 +6,7 @@ import Crypto.Curve
 import Crypto.Curve.Weierstrass
 import Crypto.Curve.XCurves
 import Crypto.ECDH
-import Crypto.HKDF
+import Network.TLS.HKDF
 import Crypto.Hash
 import Crypto.Random
 import Data.Bits
@@ -20,7 +20,6 @@ import Utils.Bytes
 import Utils.Misc
 import Utils.Network
 import Utils.Parser
-import Decidable.Equality
 
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
@@ -61,7 +60,6 @@ get_server_handshake_key hello = go hello.extensions
   go ((KeyShare ** (KeyShare x)) :: xs) = Right x
   go (x :: xs) = go xs
 
-
 public export
 ciphersuite_to_hash_type : CipherSuite -> (DPair Type Hash)
 ciphersuite_to_hash_type TLS_AES_128_GCM_SHA256 = MkDPair Sha256 %search
@@ -73,6 +71,16 @@ ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha25
 ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
 
 public export
+ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
+ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+ciphersuite_to_aead_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair ChaCha20_Poly1305 %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+
+public export
 curve_group_to_type : SupportedGroup -> (DPair Type ECDHCyclicGroup)
 curve_group_to_type X25519 = MkDPair X25519_DH %search
 curve_group_to_type X448 = MkDPair X448_DH %search
@@ -81,27 +89,12 @@ curve_group_to_type SECP384r1 = MkDPair P384 %search
 curve_group_to_type SECP521r1 = MkDPair P521 %search
 
 public export
-curve_group_to_keypair_type : (g : SupportedGroup) -> Type
-curve_group_to_keypair_type group =
-  let (ecdh ** _) = curve_group_to_type group
-  in (Scalar {a=ecdh}, Element {a=ecdh})
-
-public export
 curve_group_to_scalar_type : SupportedGroup -> Type
-curve_group_to_scalar_type group = Scalar @{(snd $ curve_group_to_type group)}
+curve_group_to_scalar_type group = Scalar @{snd $ curve_group_to_type group}
 
 public export
 curve_group_to_element_type : SupportedGroup -> Type
-curve_group_to_element_type group = Element @{(snd $ curve_group_to_type group)}
-
-public export
-deserialize_key : SupportedGroup -> List Bits8 ->
-                  DPair Type $ \a => DPair (ECDHCyclicGroup a) $ \wit => Maybe (Element @{wit})
-deserialize_key group input =
-  let
-    (a ** dhc) = curve_group_to_type group
-  in
-    (a ** dhc ** deserialize_pk @{dhc} input)
+curve_group_to_element_type group = Element @{snd $ curve_group_to_type group}
 
 public export
 record TLSInitalState where
@@ -121,11 +114,23 @@ record TLSClientHelloState where
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
 public export
-record TLS3ServerHelloState where
-  constructor MkTLS3ServerHelloState
-  digest_state : Hash a => a
-  shared_secret : List Bits8
-  cipher_suite : CipherSuite
+data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
+  MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h -> HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
+
+public export
+decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_bytes @{aead'}) -> List Bits8 -> 
+                       Maybe (TLS3ServerHelloState aead aead' algo algo', List Bits8)
+decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' h hk counter) (MkWrapper ciphertext mac_tag) record_header =
+  let (MkHandshakeKeys _ c_hs_k s_hs_k c_hs_iv s_hs_iv c_tr_key s_tr_key) = hk
+      s_hs_iv' = zipWith xor s_hs_iv $ integer_to_be _ $ natToInteger counter
+  in case decrypt @{a'} s_hs_k s_hs_iv' ciphertext record_header $ toList mac_tag of
+        (_, False) => Nothing
+        (plaintext, True) => Just (MkTLS3ServerHelloState a' h' h hk (S counter), plaintext)
+
+{-
+handshake_key : AEAD a => TLS3ServerHelloState a h -> HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a})
+handshake_key (MkTLS3ServerHelloState _ k) = k
+-}
 
 -- TODO: TLS2 Support
 public export
@@ -146,12 +151,12 @@ public export
 data TLSState : TLSStep -> Type where
   TLS_Init : TLSInitalState -> TLSState Init
   TLS_ClientHello : TLSClientHelloState -> TLSState ClientHello
-  TLS3_ServerHello : TLS3ServerHelloState -> TLSState ServerHello3
+  TLS3_ServerHello : TLS3ServerHelloState a b c d -> TLSState ServerHello3
   TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
-encode_public_keys group (sk, pk) = (group, serialize_pk @{(snd $ curve_group_to_type group)} pk)
+encode_public_keys group (sk, pk) = (group, serialize_pk @{snd $ curve_group_to_type group} pk)
 
 key_exchange : (group : SupportedGroup) ->
                List Bits8 ->
@@ -159,9 +164,9 @@ key_exchange : (group : SupportedGroup) ->
                Maybe (List Bits8)
 key_exchange group pk [] = Nothing
 key_exchange group pk ((group' ** (sk, _)) :: xs) =
-  case decEq @{FromEq} group group' of
-    Yes _ => deserialize_then_dh @{(snd $ curve_group_to_type group')} sk pk
-    No _ => key_exchange group pk xs
+  if group == group'
+    then deserialize_then_dh @{snd $ curve_group_to_type group'} sk pk
+    else key_exchange group pk xs
 
 public export
 tls_init_to_clienthello : TLSState Init -> (Message.ClientHello, TLSState ClientHello)
@@ -188,14 +193,13 @@ tls_clienthello_to_serverhello : TLSState ClientHello -> ServerHello -> List Bit
 tls_clienthello_to_serverhello (TLS_ClientHello state) server_hello b_server_hello =
   case get_server_version server_hello of
     TLS13 => do
-      let (hash_algo ** _) = ciphersuite_to_hash_type server_hello.cipher_suite
+      let (hash_algo ** hwit) = ciphersuite_to_hash_type server_hello.cipher_suite
       let digest_state = update b_server_hello $ update state.b_client_hello $ init hash_algo
       (group, pk) <- get_server_handshake_key server_hello
       shared_secret <- maybe_to_either (key_exchange group pk $ toList state.dh_keys) "server sent invalid key"
-      Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState digest_state shared_secret server_hello.cipher_suite
+      let (aead ** awit) = ciphersuite_to_aead_type server_hello.cipher_suite
+      let hk = tls13_handshake_derive hash_algo (iv_bytes {a=aead}) (key_bytes {a=aead}) shared_secret $ toList $ finalize digest_state
+      Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState awit hwit digest_state hk Z
     TLS12 =>
-      Right
-      $ Left
-      $ TLS2_ServerHello
-      $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite
+      Right $ Left $ TLS2_ServerHello $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite
     tlsvr => Left $ "unsupported version: " <+> show tlsvr
