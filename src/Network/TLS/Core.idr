@@ -225,7 +225,7 @@ list_minus a b = take (length a `minus` length b) a
 
 tls3_serverhello_to_application_go : HasIO io => TLSState ServerHello3 -> List Bits8 -> (Certificate -> io Bool) ->
                                               (EitherT String io (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
-tls3_serverhello_to_application_go og [0x16] cert_ok = pure $ Left og
+tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
 tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) plaintext cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
     Pure leftover (_ ** EncryptedExtensions x) =>
@@ -282,6 +282,9 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | _ => throwE $ "Parsing error: record not application data"
   let Just wrapper = from_application_data {mac_size = (mac_bytes @{a'})} application_data
   | Nothing => throwE $ "malformed wrapper:" <+> xxd application_data
-  let Just (server_hello, plaintext) = decrypt_hs_s_wrapper server_hello wrapper (take 5 b_wrapper)
+  let Just (server_hello, plaintext') = decrypt_hs_s_wrapper server_hello wrapper (take 5 b_wrapper)
   | Nothing => throwE "cannot decrypt wrapper"
+  let Just (plaintext, 0x16) = uncons1 <$> toList1' plaintext'
+  | Just (plaintext, i) => throwE $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
+  | Nothing => throwE "plaintext is empty"
   tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
