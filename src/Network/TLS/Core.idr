@@ -107,30 +107,24 @@ record TLSInitalState where
   signature_algos : List1 SignatureAlgorithm
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
-public export
+export
 record TLSClientHelloState where
   constructor MkTLSClientHelloState
   b_client_hello : List Bits8
   client_random : Vect 32 Bits8
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
-public export
+export
 data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
   MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h ->
                            HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
 
-public export
-data TLS3ApplicationState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
-  MkTLS3ApplicationState : (a' : AEAD a) -> (h' : Hash h) -> h ->
-                           ApplicationKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a' h h'
-
-{-
-handshake_key : AEAD a => TLS3ServerHelloState a h -> HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a})
-handshake_key (MkTLS3ServerHelloState _ k) = k
--}
+export
+data TLS3ApplicationState : (aead : Type) -> AEAD aead -> Type where
+  MkTLS3ApplicationState : (a' : AEAD a) -> ApplicationKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a'
 
 -- TODO: TLS2 Support
-public export
+export
 record TLS2ServerHelloState where
   constructor MkTLS2ServerHelloState
   client_random : Vect 32 Bits8
@@ -150,7 +144,7 @@ data TLSState : TLSStep -> Type where
   TLS_Init : TLSInitalState -> TLSState Init
   TLS_ClientHello : TLSClientHelloState -> TLSState ClientHello
   TLS3_ServerHello : TLS3ServerHelloState a b algo d -> TLSState ServerHello3
-  TLS3_Application : TLS3ApplicationState a b algo d -> TLSState Application3
+  TLS3_Application : TLS3ApplicationState a b -> TLSState Application3
   TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
@@ -248,7 +242,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
       in if (tls13_verify_data algo s_tr_key $ toList $ finalize d') == verify_data x
             then
               let digest = update plaintext d'
-                  client_verify_data = tls13_verify_data algo s_tr_key $ toList $ finalize digest
+                  client_verify_data = tls13_verify_data algo c_tr_key $ toList $ finalize digest
                   client_handshake_finished =
                     to_application_data
                     $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)}
@@ -261,7 +255,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
                   verify_data_wrapped = MkWrapper chf_encrypted chf_mac_tag
                   b_chf_wrapped =
                     (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper chf_encrypted chf_mac_tag))
-              in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' h' digest app_key Z Z)
+              in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' app_key Z Z)
             else
               throwE "verify data does not match"
     Fail err => throwE $ "body: " <+> xxd plaintext <+> "\nbody length: " <+> (show $ length plaintext) <+> "\nparsing error: " <+> show err
@@ -285,6 +279,50 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   let Just (server_hello, plaintext') = decrypt_hs_s_wrapper server_hello wrapper (take 5 b_wrapper)
   | Nothing => throwE "cannot decrypt wrapper"
   let Just (plaintext, 0x16) = uncons1 <$> toList1' plaintext'
+  | Just ([_, alert], 0x15) => throwE $ "alert: " <+> (show $ id_to_alert_description alert)
   | Just (plaintext, i) => throwE $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
   | Nothing => throwE "plaintext is empty"
   tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
+
+decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_bytes @{aead'}) -> List Bits8 ->
+                       Maybe (TLS3ApplicationState aead aead', List Bits8)
+decrypt_ap_s_wrapper (MkTLS3ApplicationState a' ak c_counter s_counter) (MkWrapper ciphertext mac_tag) record_header =
+  let (MkApplicationKeys c_ap_k s_ap_k c_ap_iv s_ap_iv) = ak
+      s_ap_iv = zipWith xor s_ap_iv $ integer_to_be _ $ natToInteger s_counter
+  in case decrypt @{a'} s_ap_k s_ap_iv ciphertext record_header $ toList mac_tag of
+        (_, False) => Nothing
+        (plaintext, True) => Just (MkTLS3ApplicationState a' ak c_counter (S s_counter), plaintext)
+
+public export
+decrypt_from_record : TLSState Application3 -> List Bits8 -> Either String (TLSState Application3, List Bits8)
+decrypt_from_record og@(TLS3_Application app_state@(MkTLS3ApplicationState a' ak c_counter s_counter)) b_wrapper = do
+  let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_wrapper) alert_or_arecord.decode
+  | (Pure [] $ Right (tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
+  | (Pure [] $ Left (_, alert)) => Left $ "TLS alert: " <+> show alert
+  | (Pure leftover _) => Left $ "Parsing error: overfed, leftover: " <+> xxd (map get leftover)
+  | (Fail err) => Left $ "Parsing error: " <+> show err
+  | _ => Left "Parsing error: underfed"
+  let (MkDPair _ (ApplicationData application_data)) = record'
+  | _ => Left $ "Parsing error: record not application data"
+  let Just wrapper = from_application_data {mac_size = (mac_bytes @{a'})} application_data
+  | Nothing => Left $ "malformed wrapper:" <+> xxd application_data
+  let Just (app_state, plaintext') = decrypt_ap_s_wrapper app_state wrapper (take 5 b_wrapper)
+  | Nothing => Left "cannot decrypt wrapper"
+  let Just (plaintext, 0x17) = uncons1 <$> toList1' plaintext'
+  | Just (plaintext, 0x16) => Right (TLS3_Application app_state, []) -- implement session ticket in the future?
+  | Just ([_, alert], 0x15) => Left $ "alert: " <+> (show $ id_to_alert_description alert)
+  | Just (plaintext, i) => Left $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
+  | Nothing => Left "plaintext is empty"
+  Right (TLS3_Application app_state, plaintext)
+
+public export
+encrypt_to_record : TLSState Application3 -> List Bits8 -> (TLSState Application3, List Bits8)
+encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_counter) plaintext =
+  let (MkApplicationKeys c_ap_k s_ap_k c_ap_iv s_ap_iv) = ak
+      c_ap_iv = zipWith xor c_ap_iv $ integer_to_be _ $ natToInteger c_counter
+      b_application_data = to_application_data $ MkWrappedRecord ApplicationData plaintext
+      record_length = (length b_application_data) + mac_bytes @{a'}
+      b_record_header = (record_type_with_version_with_length {i = List (Posed Bits8)}).encode (ApplicationData, TLS12, record_length)
+      (app_encrypted, app_mac_tag) = encrypt @{a'} c_ap_k c_ap_iv b_application_data b_record_header
+      b_app_wrapped = arecord.encode {i = List (Posed Bits8)} (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper app_encrypted app_mac_tag))
+  in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
