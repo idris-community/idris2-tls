@@ -107,7 +107,7 @@ namespace Message
   record Certificate where
     constructor MkCertificate
     request_context : List Bits8
-    certificates : List1 CertificateEntry
+    certificates : List CertificateEntry
 
   public export
   Show Certificate where
@@ -243,7 +243,7 @@ namespace Parsing
     $ (under "request context" $ lengthed_list 1 token)
     <*>> (under "certificates" $ lengthed 3 
          $ under "certificate list" 
-         $ lengthed_list1 3 
+         $ lengthed_list 3 
          $ under "certificate entry" 
          $ (lengthed_list 3 token <*>> (under "certificate extensions" $ lengthed_list 2 token)))
 
@@ -253,7 +253,7 @@ namespace Parsing
     (\b => Certificate (MkCertificate [] $ map (\x => MkCertificateEntry x []) b)) 
     (\(Certificate (MkCertificate a b)) => map body b)
     $ lengthed 3
-    $ (under "certificate list 1.2" $ lengthed_list1 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
+    $ (under "certificate list 1.2" $ lengthed_list 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
 
   export
   no_id_certificate_verify : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake CertificateVerify)
