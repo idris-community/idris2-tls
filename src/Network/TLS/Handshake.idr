@@ -241,7 +241,7 @@ namespace Parsing
     (\(Certificate (MkCertificate a d)) => (a, map (\b => (b.body, b.extensions)) d))
     $ lengthed 3
     $ (under "request context" $ lengthed_list 1 token)
-    <*>> (under "certificates" $ lengthed 3
+    <*>> (under "certificates"
          $ under "certificate list"
          $ lengthed_list1 3
          $ under "certificate entry"
