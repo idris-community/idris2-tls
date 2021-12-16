@@ -116,12 +116,12 @@ record TLSClientHelloState where
 
 public export
 data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
-  MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h -> 
+  MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h ->
                            HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
 
 public export
 data TLS3ApplicationState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
-  MkTLS3ApplicationState : (a' : AEAD a) -> (h' : Hash h) -> h -> 
+  MkTLS3ApplicationState : (a' : AEAD a) -> (h' : Hash h) -> h ->
                            ApplicationKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a' h h'
 
 {-
@@ -246,20 +246,20 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
     Pure [] (_ ** Finished x) =>
       let (MkHandshakeKeys _ c_hs_k s_hs_k c_hs_iv s_hs_iv c_tr_key s_tr_key) = hk
       in if (tls13_verify_data algo s_tr_key $ toList $ finalize d') == verify_data x
-            then 
+            then
               let digest = update plaintext d'
                   client_verify_data = tls13_verify_data algo s_tr_key $ toList $ finalize digest
-                  client_handshake_finished = 
-                    to_application_data 
-                    $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)} 
-                    $ Finished 
+                  client_handshake_finished =
+                    to_application_data
+                    $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)}
+                    $ Finished
                     $ MkFinished client_verify_data)
                   record_length = (length client_handshake_finished) + mac_bytes @{a'}
                   b_record = record_type_with_version_with_length.encode {i = List (Posed Bits8)} (ApplicationData, TLS12, record_length)
                   (chf_encrypted, chf_mac_tag) = encrypt @{a'} c_hs_k c_hs_iv client_handshake_finished b_record
                   app_key = tls13_application_derive algo hk (toList $ finalize digest)
                   verify_data_wrapped = MkWrapper chf_encrypted chf_mac_tag
-                  b_chf_wrapped = 
+                  b_chf_wrapped =
                     (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper chf_encrypted chf_mac_tag))
               in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' h' digest app_key Z Z)
             else

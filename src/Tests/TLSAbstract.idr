@@ -61,15 +61,15 @@ tls_test target_hostname = do
   let sk = the (Vect 32 Bits8) $
     [ 0xcc, 0x93, 0x5d, 0xb7, 0x60, 0x54, 0xe7, 0x2d, 0x3a, 0x29, 0xcb, 0x62, 0x5d, 0xc0, 0x10, 0xca, 0x6d
     , 0x46, 0x0e, 0xf6, 0x56, 0xf5, 0x06, 0xa5, 0xbb, 0x50, 0x4a, 0xb0, 0x68, 0x28, 0x34, 0x30]
-  let pk = the (Vect 32 Bits8) $ 
+  let pk = the (Vect 32 Bits8) $
     [ 0x38, 0xf3, 0xa1, 0xf3, 0xa8, 0x3b, 0x6c, 0x55, 0x88, 0x9a, 0x4b, 0x5d, 0x62, 0x81, 0x70, 0xf5, 0xe6
     , 0xca, 0x09, 0x60, 0xb9, 0x3b, 0x4a, 0xd8, 0x95, 0x59, 0x00, 0x2d, 0x72, 0x78, 0x9d, 0x24 ]
-    
-  let 
-    init_state = 
-      MkTLSInitalState 
-        target_hostname 
-        (map (cast . finToNat) range) 
+
+  let
+    init_state =
+      MkTLSInitalState
+        target_hostname
+        (map (cast . finToNat) range)
         []
         (TLS_AES_128_GCM_SHA256 ::: [ TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256 ])
         (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
@@ -85,8 +85,8 @@ tls_test target_hostname = do
 
   Right b_server_hello <- read_record sock
   | Left err => putStrLn err
-  
-  putStrLn "server_hello:" 
+
+  putStrLn "server_hello:"
   putStrLn $ xxd b_server_hello
 
   let Right (Right state) = tls_clienthello_to_serverhello state b_server_hello
