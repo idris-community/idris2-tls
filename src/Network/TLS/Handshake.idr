@@ -91,18 +91,29 @@ namespace Message
       ]
 
   public export
+  record CertificateEntry where
+    constructor MkCertificateEntry
+    body : List Bits8
+    extensions : List Bits8
+
+  public export
+  Show CertificateEntry where
+    show x = show_record "CertificateEntry"
+      [ ("certificate", show $ xxd $ x.body)
+      , ("certificate_extension", xxd x.extensions)
+      ]
+
+  public export
   record Certificate where
     constructor MkCertificate
     request_context : List Bits8
-    certificates : List1 (List Bits8)
-    certificate_extensions : List Bits8 -- TODO: how would it work?
+    certificates : List1 CertificateEntry
 
   public export
   Show Certificate where
     show x = show_record "Certificate"
       [ ("request_context", xxd x.request_context)
-      , ("certificates", show $ map xxd $ x.certificates)
-      , ("certificate_extensions", xxd x.certificate_extensions)
+      , ("certificates", foldl (<+>) "" $ map show $ x.certificates)
       ]
 
   public export
@@ -224,15 +235,23 @@ namespace Parsing
 
   export
   no_id_certificate : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake Certificate)
-  no_id_certificate = map (\(a,b,c) => Certificate (MkCertificate a b c)) (\(Certificate (MkCertificate a b c)) => (a,b,c))
+  no_id_certificate = 
+    map 
+    (\(a,b) => Certificate (MkCertificate a $ map (uncurry MkCertificateEntry) b)) 
+    (\(Certificate (MkCertificate a d)) => (a, map (\b => (b.body, b.extensions)) d))
     $ lengthed 3
     $ (under "request context" $ lengthed_list 1 token)
-    <*>> (under "certificates" $ lengthed 3 $ under "certificate list" $ lengthed_list1 3 $ under "certificate entry" $ lengthed_list 3 token)
-    <*>> (under "certificate extensions" $ lengthed_list 2 token)
+    <*>> (under "certificates" $ lengthed 3 
+         $ under "certificate list" 
+         $ lengthed_list1 3 
+         $ under "certificate entry" 
+         $ (lengthed_list 3 token <*>> (under "certificate extensions" $ lengthed_list 2 token)))
 
   export
   no_id_certificate2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake Certificate)
-  no_id_certificate2 = map (\(b) => Certificate (MkCertificate [] b [])) (\(Certificate (MkCertificate a b c)) => b)
+  no_id_certificate2 = map 
+    (\b => Certificate (MkCertificate [] $ map (\x => MkCertificateEntry x []) b)) 
+    (\(Certificate (MkCertificate a b)) => map body b)
     $ lengthed 3
     $ (under "certificate list 1.2" $ lengthed_list1 3 $ under "certificate entry 1.2" $ lengthed_list 3 token)
 
@@ -283,4 +302,3 @@ namespace Parsing
     <|> (with_id no_id_certificate_verify)
     <|> (with_id no_id_finished)
     <|> (with_id no_id_new_session_ticket)
-
