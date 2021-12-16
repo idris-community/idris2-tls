@@ -168,7 +168,7 @@ key_exchange group pk ((group' ** (sk, _)) :: xs) =
     else key_exchange group pk xs
 
 public export
-tls_init_to_clienthello : TLSState Init -> (Message.ClientHello, TLSState ClientHello)
+tls_init_to_clienthello : TLSState Init -> (List Bits8, TLSState ClientHello)
 tls_init_to_clienthello (TLS_Init state) =
   let client_hello_object = MkClientHello
         TLS12
@@ -184,7 +184,7 @@ tls_init_to_clienthello (TLS_Init state) =
         ]
       b_client_hello =
         (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
-  in (client_hello_object, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
+  in (b_client_hello, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
 
 public export
 tls_clienthello_to_serverhello : TLSState ClientHello -> List Bits8 ->
@@ -224,8 +224,8 @@ list_minus : List a -> List b -> List a
 list_minus a b = take (length a `minus` length b) a
 
 tls3_serverhello_to_application_go : HasIO io => TLSState ServerHello3 -> List Bits8 -> (Certificate -> io Bool) ->
-                                              (EitherT String io (Either (TLSState ServerHello3) (TLSState Application3)))
-tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
+                                              (EitherT String io (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
+tls3_serverhello_to_application_go og [0x16] cert_ok = pure $ Left og
 tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) plaintext cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
     Pure leftover (_ ** EncryptedExtensions x) =>
@@ -248,15 +248,28 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
       in if (tls13_verify_data algo s_tr_key $ toList $ finalize d') == verify_data x
             then 
               let digest = update plaintext d'
+                  client_verify_data = tls13_verify_data algo s_tr_key $ toList $ finalize digest
+                  client_handshake_finished = 
+                    to_application_data 
+                    $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)} 
+                    $ Finished 
+                    $ MkFinished client_verify_data)
+                  record_length = (length client_handshake_finished) + mac_bytes @{a'}
+                  b_record = record_type_with_version_with_length.encode {i = List (Posed Bits8)} (ApplicationData, TLS12, record_length)
+                  (chf_encrypted, chf_mac_tag) = encrypt @{a'} c_hs_k c_hs_iv client_handshake_finished b_record
                   app_key = tls13_application_derive algo hk (toList $ finalize digest)
-              in pure $ Right $ TLS3_Application $ MkTLS3ApplicationState a' h' digest app_key Z Z
+                  verify_data_wrapped = MkWrapper chf_encrypted chf_mac_tag
+                  b_chf_wrapped = 
+                    (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper chf_encrypted chf_mac_tag))
+              in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' h' digest app_key Z Z)
             else
               throwE "verify data does not match"
+    Fail err => throwE $ "body: " <+> xxd plaintext <+> "\nbody length: " <+> (show $ length plaintext) <+> "\nparsing error: " <+> show err
     _ => throwE "failed to parse plaintext"
 
 public export
 tls3_serverhello_to_application : HasIO io => TLSState ServerHello3 -> List Bits8 -> (Certificate -> io Bool) ->
-                                              io (Either String (Either (TLSState ServerHello3) (TLSState Application3)))
+                                              io (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
 tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) b_wrapper cert_ok = runEitherT $ do
   let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_wrapper) alert_or_arecord.decode
   | (Pure [] $ Right (tlsver, _)) => throwE $ "Unsupported TLS version: " <+> show tlsver
