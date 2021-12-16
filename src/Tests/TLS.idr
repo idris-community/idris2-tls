@@ -142,6 +142,9 @@ tls_test target_hostname = do
   | (plaintext, False) => putStrLn "mac verification failed"
   putStrLn $ "plaintext: " <+> xxd plaintext
 
+  let (Pure _ record') = feed (map (uncurry MkPosed) $ enumerate Z plaintext) (with_id no_id_encrypted_extensions).decode
+  print $ show record'
+
   -- putStrLn $ "send change cipher spec"
   -- _ <- send_bytes sock $ (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ChangeCipherSpec [0x01]))
 

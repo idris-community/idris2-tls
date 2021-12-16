@@ -116,3 +116,11 @@ tls13_verify_data algo traffic_secret records_hash =
   let finished_key = toList $
         tls13_hkdf_expand_label algo traffic_secret (encode_ascii "finished") [] $ digest_nbyte {algo}
   in toList $ hkdf_extract algo finished_key records_hash
+
+public export
+tls13_verify_data' : {algo: _} -> Hash algo -> List Bits8 -> List Bits8 -> List Bits8
+tls13_verify_data' {algo} wit traffic_secret records_hash =
+  let finished_key = toList $
+        tls13_hkdf_expand_label algo traffic_secret (encode_ascii "finished") [] $ digest_nbyte {algo}
+  in toList $ hkdf_extract algo finished_key records_hash
+

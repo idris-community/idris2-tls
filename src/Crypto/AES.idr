@@ -304,4 +304,4 @@ decrypt_block' n_main_rounds k x =
 
 export
 decrypt_block : (mode : Mode) -> (key : Vect (get_n_k mode) (Vect 4 Bits8)) -> (state : Vect 4 (Vect 4 Bits8)) -> Vect 4 (Vect 4 Bits8)
-decrypt_block mode k x = decrypt_block' {ok = n_k_never_Z mode} (get_main_rounds mode) k s
+decrypt_block mode k x = decrypt_block' {ok = n_k_never_Z mode} (get_main_rounds mode) k x
