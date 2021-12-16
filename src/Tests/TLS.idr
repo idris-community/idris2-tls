@@ -22,17 +22,18 @@ import Utils.Misc
 import Utils.Network
 import Utils.Parser
 
-read_record : HasIO io => Socket -> io (Either String (List Bits8))
+read_record : HasIO m => Socket -> m (Either String (List Bits8))
 read_record sock = do
-  Just header@[_, 0x03, 0x03, hi, lo] <- recv_bytes sock 5
-  | Just other => pure $ Left $ "what is this: " <+> xxd other
-  | Nothing => pure $ Left "recv_byte (header) failed"
-  let size = cast $ be_to_integer [hi, lo]
-  Just body <- recv_bytes sock size
-  | Nothing => pure $ Left "recv_byte (body) failed"
-  if length body == cast size
-     then pure $ Right $ header <+> body
-     else pure $ Left $ "length does not match header: " <+> xxd body
+  Just b_header <- recv_bytes sock 5
+  | Nothing => pure $ Left "recv_byte (record header / alert) failed"
+  let (Pure [] (Right (_, TLS12, len))) = feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
+  | Pure [] (Left x) => pure $ Left $ "ALERT: " <+> show x
+  | _ => pure $ Left $ "unable to parse header"
+  Just b_body <- recv_bytes sock (cast len)
+  | Nothing => pure $ Left "recv_byte (record body) failed"
+  case length b_body == cast len of
+    False => pure $ Left $ "length does not match header: " <+> xxd b_body
+    True => pure $ Right $ b_header <+> b_body
 
 test_http_body : String -> String
 test_http_body hostname = "GET / HTTP/1.1\nHost: " <+> hostname <+> "\n\n"
@@ -57,7 +58,7 @@ tls_test target_hostname = do
   | Left err => putStrLn $ "unable to create socket: " <+> show err
 
   putStrLn $ "generate key pair"
-  -- (sk, pk) <- generate_key_pair {a=X25519_DH}
+  -- (sk, pk) <- generate_key_pair
   let sk = the (Vect 32 Bits8) $
     [ 0xcc, 0x93, 0x5d, 0xb7, 0x60, 0x54, 0xe7, 0x2d, 0x3a, 0x29, 0xcb, 0x62, 0x5d, 0xc0, 0x10, 0xca, 0x6d
     , 0x46, 0x0e, 0xf6, 0x56, 0xf5, 0x06, 0xa5, 0xbb, 0x50, 0x4a, 0xb0, 0x68, 0x28, 0x34, 0x30]
