@@ -7,6 +7,7 @@ import Data.List
 import Data.Nat
 import Data.Stream
 import Data.Vect
+import Data.List1
 import Syntax.WithProof
 
 public export
@@ -265,3 +266,7 @@ public export
 init' : List a -> List a
 init' [] = []
 init' (x :: xs) = init (x :: xs)
+
+public export
+uncons1 : List1 a -> (List a, a)
+uncons1 lst = (init lst, last lst)
