@@ -43,7 +43,7 @@ read_record sock = do
   let (Pure [] (Right (_, TLS12, len))) = 
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => pure $ Left $ "ALERT: " <+> show x
-  | _ => pure $ Left $ "unable to parse header"
+  | _ => pure $ Left $ "unable to parse header: " <+> xxd b_header
   Just b_body <- recv_n_bytes sock (cast len) []
   | Nothing => pure $ Left "recv_byte (record body) failed"
   case length b_body == cast len of
@@ -101,13 +101,18 @@ tls2_test sock target_hostname state = do
   | Left err => putStrLn err
 
   putStrLn "server hello done"
-  let Right state = serverkex_process_serverhellodone state b_s_hello_done
+  let Right (handshake_data, state) = serverkex_process_serverhellodone state b_s_hello_done
+  | Left err => putStrLn err
+
+  _ <- send_bytes sock handshake_data
+
+  Right b_cert <- read_record sock
   | Left err => putStrLn err
 
   putStrLn "ok tls/1.2"
 
-tls_test : HasIO m => (target_hostname : String) -> m ()
-tls_test target_hostname = do
+tls_test : HasIO m => (target_hostname : String) -> Int -> m ()
+tls_test target_hostname port = do
   Right sock <- socket AF_INET Stream 0
   | Left err => putStrLn $ "unable to create socket: " <+> show err
 
@@ -121,12 +126,12 @@ tls_test target_hostname = do
         target_hostname
         (map (cast . finToNat) range)
         []
-        (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 ])
+        (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ])
         (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
         keys
 
   putStrLn $ "connecting to " <+> target_hostname
-  0 <- connect sock (Hostname target_hostname) 443
+  0 <- connect sock (Hostname target_hostname) port
   | _ => putStrLn $ "unable to connect"
   putStrLn $ "connected"
 

@@ -30,6 +30,14 @@ namespace Parserializer
   map to from pser = MkParserializer (pser.encode . from) (map to pser.decode)
 
   export
+  mapEither : (Semigroup e, Monoid i) => (to : a -> Either e b) -> (from : b -> a) -> Parserializer c i e a -> Parserializer c i e b
+  mapEither to from pser = MkParserializer (pser.encode . from) $ do
+    a <- pser.decode
+    case to a of
+      Right b => pure b
+      Left e => fail e
+
+  export
   (*>) : (Semigroup e, Monoid i) => Parserializer c i e () -> Parserializer c i e a -> Parserializer c i e a
   ma *> mb = map snd ((),) (ma <*>> mb)
 

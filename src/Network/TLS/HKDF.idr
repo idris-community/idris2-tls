@@ -39,25 +39,23 @@ tls13_hkdf_expand_label algo secret label context lth =
   in hkdf_expand algo lth secret body
 
 public export
-data HandshakeKeys : (iv : Nat) -> (key : Nat) -> Type where
-  MkHandshakeKeys : List Bits8 ->
-                    {iv, key : Nat} ->
-                    (client_handshake_key : Vect key Bits8) ->
-                    (server_handshake_key : Vect key Bits8) ->
-                    (client_handshake_iv  : Vect iv  Bits8) ->
-                    (server_handshake_iv  : Vect iv  Bits8) ->
-                    (client_traffic_secret : List Bits8) ->
-                    (server_traffic_secret : List Bits8) ->
-                    HandshakeKeys iv key
+record HandshakeKeys (iv : Nat) (key : Nat) where
+  constructor MkHandshakeKeys 
+  handshake_secret : List Bits8
+  client_handshake_key : Vect key Bits8
+  server_handshake_key : Vect key Bits8
+  client_handshake_iv  : Vect iv Bits8
+  server_handshake_iv  : Vect iv Bits8
+  client_traffic_secret : List Bits8
+  server_traffic_secret : List Bits8
 
 public export
-data ApplicationKeys : (iv : Nat) -> (key : Nat) -> Type where
-  MkApplicationKeys : {iv,key : Nat} ->
-                      (client_application_key : Vect key Bits8) ->
-                      (server_application_key : Vect key Bits8) ->
-                      (client_application_iv  : Vect iv  Bits8) ->
-                      (server_application_iv  : Vect iv  Bits8) ->
-                      ApplicationKeys iv key
+record ApplicationKeys (iv : Nat) (key : Nat) where
+  constructor MkApplicationKeys
+  client_application_key : Vect key Bits8
+  server_application_key : Vect key Bits8
+  client_application_iv  : Vect iv Bits8
+  server_application_iv  : Vect iv Bits8
 
 export
 tls13_handshake_derive : (0 algo : Type) -> Hash algo => (iv : Nat) -> (key : Nat) -> List Bits8 -> List Bits8 -> HandshakeKeys iv key
@@ -89,8 +87,8 @@ tls13_handshake_derive algo iv key shared_secret hello_hash =
       (toList server_handshake_traffic_secret)
 
 public export
-tls13_application_derive : (0 algo : Type) -> Hash algo => HandshakeKeys iv key -> List Bits8 -> ApplicationKeys iv key
-tls13_application_derive algo {iv} {key} (MkHandshakeKeys handshake_secret _ _ _ _ _ _) handshake_hash =
+tls13_application_derive : {iv : Nat} -> {key : Nat} -> (0 algo : Type) -> Hash algo => HandshakeKeys iv key -> List Bits8 -> ApplicationKeys iv key
+tls13_application_derive algo (MkHandshakeKeys handshake_secret _ _ _ _ _ _) handshake_hash =
   let zeros = List.replicate (digest_nbyte {algo}) (the Bits8 0)
       empty_hash = toList $ hash algo []
       derived_secret =
@@ -118,34 +116,26 @@ tls13_verify_data algo traffic_secret records_hash =
   in toList $ hkdf_extract algo finished_key records_hash
 
 public export
-tls13_verify_data' : {algo: _} -> Hash algo -> List Bits8 -> List Bits8 -> List Bits8
-tls13_verify_data' {algo} wit traffic_secret records_hash =
-  let finished_key = toList $
-        tls13_hkdf_expand_label algo traffic_secret (encode_ascii "finished") [] $ digest_nbyte {algo}
-  in toList $ hkdf_extract algo finished_key records_hash
+record Application2Keys (iv : Nat) (key : Nat) (mac : Nat) where
+  constructor MkApplication2Keys
+  master_secret : Vect 48 Bits8
+  client_mac_key : Vect mac Bits8
+  server_mac_key : Vect mac Bits8
+  client_application_key : Vect key Bits8
+  server_application_key : Vect key Bits8
+  client_application_iv  : Vect iv  Bits8
+  server_application_iv  : Vect iv  Bits8
 
-public export
-data Application2Keys : (iv : Nat) -> (key : Nat) -> (mac : Nat) -> Type where
-  MkApplication2Keys : {iv,key,mac : Nat} ->
-                      (master_secret : Vect 48 Bits8) ->
-                      (client_mac_key : Vect mac Bits8) ->
-                      (server_mac_key : Vect mac Bits8) ->
-                      (client_application_key : Vect key Bits8) ->
-                      (server_application_key : Vect key Bits8) ->
-                      (client_application_iv  : Vect iv  Bits8) ->
-                      (server_application_iv  : Vect iv  Bits8) ->
-                      Application2Keys iv key mac
-
-hmac_stream : {algo: _} -> Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
-hmac_stream {algo} hwit secret seed =
+hmac_stream : Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
+hmac_stream hwit secret seed =
   stream_concat
   $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
   $ iterate (toList . hmac algo secret) seed
 
 public export
-tls12_application_derive : {algo: _} -> Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
+tls12_application_derive : Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
                            Application2Keys iv key mac
-tls12_application_derive {algo} hwit iv key mac shared_secret client_random server_random =
+tls12_application_derive hwit iv key mac shared_secret client_random server_random =
   let master_secret =
         Stream.take 48
         $ hmac_stream hwit shared_secret
@@ -168,3 +158,8 @@ tls12_application_derive {algo} hwit iv key mac shared_secret client_random serv
        server_application_key
        client_application_iv
        server_application_iv
+
+public export
+tls12_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
+tls12_verify_data algo n master_secret records_hash =
+  take _ $ hmac_stream algo master_secret (encode_ascii "client finished" <+> records_hash)
