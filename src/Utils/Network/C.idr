@@ -1,4 +1,4 @@
-module Utils.Network
+module Utils.Network.C
 
 import Data.Vect
 import Network.FFI

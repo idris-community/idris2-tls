@@ -10,33 +10,6 @@ import Utils.Bytes
 import Utils.Misc
 import Utils.Show
 
-||| the only extensions that can found in wrappers during handshake
-public export
-data WhenWrapped : HandshakeType -> Type where
-  IsEncryptedExtensions : WhenWrapped EncryptedExtensions
-  IsCertificate : WhenWrapped Certificate
-  IsCertificateVerify : WhenWrapped CertificateVerify
-  IsFinished : WhenWrapped Finished
-  IsNewSessionTicket : WhenWrapped NewSessionTicket
-
-public export
-Uninhabited (WhenWrapped ClientHello) where
-  uninhabited _ impossible
-
-public export
-Uninhabited (WhenWrapped ServerHello) where
-  uninhabited _ impossible
-
-public export
-dec_when_wrapped : (type : HandshakeType) -> Dec (WhenWrapped type)
-dec_when_wrapped EncryptedExtensions = Yes IsEncryptedExtensions
-dec_when_wrapped Certificate = Yes IsCertificate
-dec_when_wrapped CertificateVerify = Yes IsCertificateVerify
-dec_when_wrapped Finished = Yes IsFinished
-dec_when_wrapped NewSessionTicket = Yes IsNewSessionTicket
-dec_when_wrapped ClientHello = No uninhabited
-dec_when_wrapped ServerHello = No uninhabited
-
 namespace Message
   public export
   record ClientHello where
@@ -160,6 +133,23 @@ namespace Message
       , ("extensions", show x.extensions)
       ]
 
+  public export
+  record ServerKeyExchange where
+    constructor MkServerKeyExchange
+    server_pk_group : SupportedGroup
+    server_pk_body : List Bits8
+    signature_algo : SignatureAlgorithm
+    signature_body : List Bits8
+
+  public export
+  Show ServerKeyExchange where
+    show x = show_record "ServerKeyExchange"
+      [ ("server_pk_group", show x.server_pk_group)
+      , ("server_pk_body", xxd x.server_pk_body)
+      , ("signature_algo", show x.signature_algo)
+      , ("signature_body", xxd x.signature_body)
+      ]
+
 public export
 data Handshake : HandshakeType -> Type where
   ClientHello : ClientHello -> Handshake ClientHello
@@ -169,6 +159,7 @@ data Handshake : HandshakeType -> Type where
   CertificateVerify : CertificateVerify -> Handshake CertificateVerify
   Finished : Finished -> Handshake Finished
   NewSessionTicket : NewSessionTicket -> Handshake NewSessionTicket
+  ServerKeyExchange : ServerKeyExchange -> Handshake ServerKeyExchange
 
 public export
 Show (Handshake type) where
@@ -179,9 +170,19 @@ Show (Handshake type) where
   show (CertificateVerify x) = show x
   show (Finished x) = show x
   show (NewSessionTicket x) = show x
+  show (ServerKeyExchange x) = show x
 
 XHandshake : Type
-XHandshake = Eithers [Handshake ClientHello, Handshake ServerHello, Handshake EncryptedExtensions, Handshake Certificate, Handshake CertificateVerify, Handshake Finished, Handshake NewSessionTicket]
+XHandshake = Eithers 
+  [ Handshake ClientHello
+  , Handshake ServerHello
+  , Handshake EncryptedExtensions
+  , Handshake Certificate
+  , Handshake CertificateVerify
+  , Handshake Finished
+  , Handshake NewSessionTicket
+  , Handshake ServerKeyExchange
+  ]
 
 hack_handshake : DPair _ Handshake -> XHandshake
 hack_handshake (ClientHello ** x)         = Left x
@@ -190,16 +191,18 @@ hack_handshake (EncryptedExtensions ** x) = Right (Right (Left x))
 hack_handshake (Certificate ** x)         = Right (Right (Right (Left x)))
 hack_handshake (CertificateVerify ** x)   = Right (Right (Right (Right (Left x))))
 hack_handshake (Finished ** x)            = Right (Right (Right (Right (Right (Left x)))))
-hack_handshake (NewSessionTicket ** x)    = Right (Right (Right (Right (Right (Right x)))))
+hack_handshake (NewSessionTicket ** x)    = Right (Right (Right (Right (Right (Right (Left x))))))
+hack_handshake (ServerKeyExchange ** x)   = Right (Right (Right (Right (Right (Right (Right x))))))
 
 fix_handshake : XHandshake -> DPair _ Handshake
-fix_handshake (Left x)                                          = (ClientHello ** x)
-fix_handshake (Right (Left x))                                  = (ServerHello ** x)
-fix_handshake (Right (Right (Left x)))                          = (EncryptedExtensions ** x)
-fix_handshake (Right (Right (Right (Left x))))                  = (Certificate ** x)
-fix_handshake (Right (Right (Right (Right (Left x)))))          = (CertificateVerify ** x)
-fix_handshake (Right (Right (Right (Right (Right (Left x))))))  = (Finished ** x)
-fix_handshake (Right (Right (Right (Right (Right (Right x)))))) = (NewSessionTicket ** x)
+fix_handshake (Left x)                                                  = (ClientHello ** x)
+fix_handshake (Right (Left x))                                          = (ServerHello ** x)
+fix_handshake (Right (Right (Left x)))                                  = (EncryptedExtensions ** x)
+fix_handshake (Right (Right (Right (Left x))))                          = (Certificate ** x)
+fix_handshake (Right (Right (Right (Right (Left x)))))                  = (CertificateVerify ** x)
+fix_handshake (Right (Right (Right (Right (Right (Left x))))))          = (Finished ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Left x)))))))  = (NewSessionTicket ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Right x))))))) = (ServerKeyExchange ** x)
 
 namespace Parsing
   export
@@ -281,13 +284,26 @@ namespace Parsing
 
   export
   no_id_new_session_ticket : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake NewSessionTicket)
-  no_id_new_session_ticket = map (\(a,b,c,d,e) => NewSessionTicket (MkNewSessionTicket a b c d e)) (\(NewSessionTicket (MkNewSessionTicket a b c d e)) => (a,b,c,d,e))
+  no_id_new_session_ticket = map
+    (\(a,b,c,d,e) => NewSessionTicket (MkNewSessionTicket a b c d e))
+    (\(NewSessionTicket (MkNewSessionTicket a b c d e)) => (a,b,c,d,e))
     $ lengthed 3
     $ (under "ticket lifetime seconds" $ nat 4)
     <*>> (under "ticket age add milliseconds" $ nat 4)
     <*>> (under "ticket nonce" $ lengthed_list 1 token)
     <*>> (under "session ticket" $ lengthed_list 2 token)
     <*>> (under "extensions" $ lengthed_list 2 ((token <*>> token) <*>> lengthed_list 2 token))
+
+  export
+  no_id_server_key_exchange : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake ServerKeyExchange)
+  no_id_server_key_exchange = map
+    (\(a,b,c,d) => ServerKeyExchange (MkServerKeyExchange a b c d))
+    (\(ServerKeyExchange (MkServerKeyExchange a b c d)) => (a,b,c,d))
+    $ lengthed 3
+    $ (under "curve info" $ (is [0x03]) *> supported_group)
+    <*>> (under "public key" $ lengthed_list 1 token)
+    <*>> (under "signature algo" signature_algorithm)
+    <*>> (under "signature body" $ lengthed_list 2 token)
 
   export
   with_id : (Cons (Posed Bits8) i, Monoid i) => {type : HandshakeType} -> Parserializer Bits8 i (SimpleError String) (Handshake type) -> Parserializer Bits8 i (SimpleError String) (Handshake type)
@@ -303,6 +319,7 @@ namespace Parsing
     <|> (with_id no_id_certificate_verify)
     <|> (with_id no_id_finished)
     <|> (with_id no_id_new_session_ticket)
+    <|> (with_id no_id_server_key_exchange)
 
   export
   handshake2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (DPair _ Handshake)
@@ -314,3 +331,5 @@ namespace Parsing
     <|> (with_id no_id_certificate_verify)
     <|> (with_id no_id_finished)
     <|> (with_id no_id_new_session_ticket)
+    <|> (with_id no_id_server_key_exchange)
+
