@@ -1,5 +1,6 @@
 module Network.TLS.Handshake
 
+import Data.Either
 import Data.List1
 import Data.Vect
 import Network.TLS.HelloExtension
@@ -218,14 +219,25 @@ namespace Parsing
 
   export
   no_id_server_hello : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake ServerHello)
-  no_id_server_hello = map (\(a,b,c,d,e,f) => ServerHello (MkServerHello a b c d e f)) (\(ServerHello (MkServerHello a b c d e f)) => (a,b,c,d,e,f))
-    $ lengthed 3
+  no_id_server_hello = map
+    ((\(a,b,c,d,e,f) => ServerHello (MkServerHello a b c d e f)) . fromEither) -- (\(a,b,c,d,e,f) => ServerHello (MkServerHello a b c d e f))
+    (\(ServerHello (MkServerHello a b c d e f)) => Left (a,b,c,d,e,f))
+    $ ( lengthed 3
     $ (under "server version" tls_version)
     <*>> (under "server random" $ ntokens 32)
     <*>> (under "session id" $ lengthed_list 1 token)
     <*>> (under "server chosen cipher suite" $ cipher_suite)
     <*>> (under "server chosen compression level" $ compression_level)
-    <*>> (under "server extensions" $ lengthed_list 2 extension)
+    <*>> (under "server extensions" $ lengthed_list 2 Server.extension)
+    )
+    <|> ( lengthed 3
+    $ (under "server version" tls_version)
+    <*>> (under "server random" $ ntokens 32)
+    <*>> (under "session id" $ lengthed_list 1 token)
+    <*>> (under "server chosen cipher suite" $ cipher_suite)
+    <*>> (under "server chosen compression level" $ compression_level)
+    <*>> (under "server extensions" $ MkParserializer (const []) (pure []))
+    )
 
   export
   no_id_encrypted_extensions : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake EncryptedExtensions)
