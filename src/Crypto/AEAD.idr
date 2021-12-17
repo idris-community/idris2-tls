@@ -66,15 +66,14 @@ AEAD AES_128_GCM where
         a = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length aad)
         c = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length ciphertext)
         input = chunk 16 (pad 16 aad <+> pad 16 ciphertext <+> a <+> c)
-        mult_h =
-          gcm_mult
-          $ mk_h_values
+        h = mk_h_values
           $ MkF128
           $ concat
           $ encrypt_block AES128 key'
-          $ group 4 4 $ map (const 0)
+          $ group 4 4 
+          $ map (const 0)
           $ Fin.range
-        MkF128 output = foldl (\e,a => mult_h $ xor a e) zero $ map toF128 input
+        MkF128 output = foldl (\e,a => gcm_mult h $ xor a e) zero $ map toF128 input
         j0 = concat $ encrypt_block AES128 key' $ group 4 4 (iv ++ (to_be $ the Bits32 1))
     in zipWith xor j0 output
 
@@ -94,8 +93,14 @@ AEAD AES_256_GCM where
         a = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length aad)
         c = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length ciphertext)
         input = chunk 16 (pad 16 aad <+> pad 16 ciphertext <+> a <+> c)
-        mult_h = gcm_mult $ mk_h_values $ MkF128 $ concat $ encrypt_block AES256 key' $ group 4 4 $ map (const 0) $ Fin.range
-        MkF128 output = foldl (\e,a => mult_h $ xor a e) zero $ map toF128 input
+        h = mk_h_values 
+          $ MkF128 
+          $ concat 
+          $ encrypt_block AES256 key' 
+          $ group 4 4 
+          $ map (const 0) 
+          $ Fin.range
+        MkF128 output = foldl (\e,a => gcm_mult h $ xor a e) zero $ map toF128 input
         j0 = concat $ encrypt_block AES256 key' $ group 4 4 (iv ++ (to_be $ the Bits32 1))
     in zipWith xor j0 output
 

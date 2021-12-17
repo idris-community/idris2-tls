@@ -4,6 +4,11 @@ import Data.Vect
 import Network.TLS.Parsing
 import Utils.Bytes
 import Utils.Misc
+import Crypto.AEAD
+import Crypto.Hash
+import Crypto.ECDH
+import Crypto.Curve
+import Crypto.Curve.Weierstrass
 
 -- in TLS 1.3, the severity is implicit in the type of alert being sent, and the "level" field can safely be ignored
 public export
@@ -191,6 +196,22 @@ id_to_supported_group (0x00, 0x19) = Just SECP521r1
 id_to_supported_group _ = Nothing
 
 public export
+curve_group_to_type : SupportedGroup -> (DPair Type ECDHCyclicGroup)
+curve_group_to_type X25519 = MkDPair X25519_DH %search
+curve_group_to_type X448 = MkDPair X448_DH %search
+curve_group_to_type SECP256r1 = MkDPair P256 %search
+curve_group_to_type SECP384r1 = MkDPair P384 %search
+curve_group_to_type SECP521r1 = MkDPair P521 %search
+
+public export
+curve_group_to_scalar_type : SupportedGroup -> Type
+curve_group_to_scalar_type group = Scalar @{snd $ curve_group_to_type group}
+
+public export
+curve_group_to_element_type : SupportedGroup -> Type
+curve_group_to_element_type group = Element @{snd $ curve_group_to_type group}
+
+public export
 data SignatureAlgorithm : Type where
   ECDSA_SECP256r1_SHA256 : SignatureAlgorithm
   RSA_PSS_RSAE_SHA256    : SignatureAlgorithm
@@ -274,6 +295,26 @@ id_to_cipher_suite (0xc0, 0x30) = Just TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 id_to_cipher_suite (0xc0, 0x2b) = Just TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 id_to_cipher_suite (0xc0, 0x2c) = Just TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 id_to_cipher_suite _ = Nothing
+
+public export
+ciphersuite_to_hash_type : CipherSuite -> (DPair Type Hash)
+ciphersuite_to_hash_type TLS_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_hash_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+
+public export
+ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
+ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+ciphersuite_to_aead_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair ChaCha20_Poly1305 %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
 
 public export
 data TLSVersion : Type where
@@ -364,6 +405,7 @@ data HandshakeType : Type where
   Certificate : HandshakeType
   CertificateVerify : HandshakeType
   Finished : HandshakeType
+  ServerKeyExchange : HandshakeType
 
 public export
 Show HandshakeType where
@@ -374,6 +416,7 @@ Show HandshakeType where
   show Certificate = "Certificate"
   show CertificateVerify = "CertificateVerify"
   show Finished = "Finished"
+  show ServerKeyExchange = "ServerKeyExchange"
 
 public export
 handshake_type_to_id : HandshakeType -> Bits8
@@ -384,6 +427,7 @@ handshake_type_to_id EncryptedExtensions = 0x08
 handshake_type_to_id Certificate = 0x0b
 handshake_type_to_id CertificateVerify = 0x0f
 handshake_type_to_id Finished = 0x14
+handshake_type_to_id ServerKeyExchange = 0x0c
 
 public export
 id_to_handshake_type : Bits8 -> Maybe HandshakeType

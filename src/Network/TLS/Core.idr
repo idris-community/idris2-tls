@@ -18,7 +18,6 @@ import Network.Socket
 import Network.TLS.Record
 import Utils.Bytes
 import Utils.Misc
-import Utils.Network
 import Utils.Parser
 import Control.Monad.Error.Either
 
@@ -62,44 +61,8 @@ get_server_handshake_key hello = go hello.extensions
   go (x :: xs) = go xs
 
 public export
-ciphersuite_to_hash_type : CipherSuite -> (DPair Type Hash)
-ciphersuite_to_hash_type TLS_AES_128_GCM_SHA256 = MkDPair Sha256 %search
-ciphersuite_to_hash_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
-ciphersuite_to_hash_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair Sha256 %search
-ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
-ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
-ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
-ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
-
-public export
-ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
-ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
-ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
-ciphersuite_to_aead_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair ChaCha20_Poly1305 %search
-ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
-ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
-ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
-ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
-
-public export
-curve_group_to_type : SupportedGroup -> (DPair Type ECDHCyclicGroup)
-curve_group_to_type X25519 = MkDPair X25519_DH %search
-curve_group_to_type X448 = MkDPair X448_DH %search
-curve_group_to_type SECP256r1 = MkDPair P256 %search
-curve_group_to_type SECP384r1 = MkDPair P384 %search
-curve_group_to_type SECP521r1 = MkDPair P521 %search
-
-public export
-curve_group_to_scalar_type : SupportedGroup -> Type
-curve_group_to_scalar_type group = Scalar @{snd $ curve_group_to_type group}
-
-public export
-curve_group_to_element_type : SupportedGroup -> Type
-curve_group_to_element_type group = Element @{snd $ curve_group_to_type group}
-
-public export
-record TLSInitalState where
-  constructor MkTLSInitalState
+record TLSInitialState where
+  constructor MkTLSInitialState
   server_hostname : String
   client_random : Vect 32 Bits8
   session_id : List Bits8
@@ -123,13 +86,25 @@ export
 data TLS3ApplicationState : (aead : Type) -> AEAD aead -> Type where
   MkTLS3ApplicationState : (a' : AEAD a) -> ApplicationKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a'
 
--- TODO: TLS2 Support
 export
 record TLS2ServerHelloState where
   constructor MkTLS2ServerHelloState
   client_random : Vect 32 Bits8
   server_random : Vect 32 Bits8
   cipher_suite  : CipherSuite
+  dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
+
+export
+record TLS2ServerCertificateState where
+  constructor MkTLS2ServerCertificateState
+  server_hello : TLS2ServerHelloState
+  certificate : Certificate
+  cipher_suite : CipherSuite
+  dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
+
+export
+data TLS2ServerKEXState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
+  MkTLS2ServerKEXState : (a' : AEAD a) -> (h' : Hash h) -> h -> List Bits8 -> TLS2ServerKEXState a a' h h'
 
 public export
 data TLSStep : Type where
@@ -138,14 +113,16 @@ data TLSStep : Type where
   ServerHello2 : TLSStep
   ServerHello3 : TLSStep
   Application3 : TLSStep
+  ServerCert2 : TLSStep
 
 public export
 data TLSState : TLSStep -> Type where
-  TLS_Init : TLSInitalState -> TLSState Init
+  TLS_Init : TLSInitialState -> TLSState Init
   TLS_ClientHello : TLSClientHelloState -> TLSState ClientHello
   TLS3_ServerHello : TLS3ServerHelloState a b algo d -> TLSState ServerHello3
   TLS3_Application : TLS3ApplicationState a b -> TLSState Application3
   TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
+  TLS2_ServerCertificate : TLS2ServerCertificateState -> TLSState ServerCert2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
@@ -202,7 +179,7 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
       let hk = tls13_handshake_derive hash_algo (iv_bytes {a=aead}) (key_bytes {a=aead}) shared_secret $ toList $ finalize digest_state
       Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState awit hwit digest_state hk Z
     TLS12 =>
-      Right $ Left $ TLS2_ServerHello $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite
+      Right $ Left $ TLS2_ServerHello $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite state.dh_keys
     tlsvr => Left $ "unsupported version: " <+> show tlsvr
 
 decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_bytes @{aead'}) -> List Bits8 ->
@@ -217,8 +194,8 @@ decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' digest_state hk counter) (MkW
 list_minus : List a -> List b -> List a
 list_minus a b = take (length a `minus` length b) a
 
-tls3_serverhello_to_application_go : HasIO io => TLSState ServerHello3 -> List Bits8 -> (Certificate -> io Bool) ->
-                                              (EitherT String io (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
+tls3_serverhello_to_application_go : Monad m => TLSState ServerHello3 -> List Bits8 -> (Certificate -> m Bool) ->
+                                              (EitherT String m (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
 tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
 tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) plaintext cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
@@ -262,8 +239,8 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
     _ => throwE "failed to parse plaintext"
 
 public export
-tls3_serverhello_to_application : HasIO io => TLSState ServerHello3 -> List Bits8 -> (Certificate -> io Bool) ->
-                                              io (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
+tls3_serverhello_to_application : Monad m => TLSState ServerHello3 -> List Bits8 -> (Certificate -> m Bool) ->
+                                              m (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
 tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) b_wrapper cert_ok = runEitherT $ do
   let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_wrapper) alert_or_arecord.decode
   | (Pure [] $ Right (tlsver, _)) => throwE $ "Unsupported TLS version: " <+> show tlsver
@@ -326,3 +303,29 @@ encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_c
       (app_encrypted, app_mac_tag) = encrypt @{a'} c_ap_k c_ap_iv b_application_data b_record_header
       b_app_wrapped = arecord.encode {i = List (Posed Bits8)} (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper app_encrypted app_mac_tag))
   in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
+
+public export
+serverhello2_to_servercert : TLSState ServerHello2 -> List Bits8 -> Either String (TLSState ServerCert2)
+serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
+  let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_cert) alert_or_arecord2.decode
+  | (Pure [] $ Right (tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
+  | (Pure [] $ Left (_, alert)) => Left $ "TLS alert: " <+> show alert
+  | (Pure leftover _) => Left $ "Parsing error: overfed, leftover: " <+> xxd (map get leftover)
+  | (Fail err) => Left $ "Parsing error: " <+> show err
+  | _ => Left "Parsing error: underfed"
+  let (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) = record'
+  | _ => Left $ "Parsing error: record not server_hello"
+  Right $ TLS2_ServerCertificate $ MkTLS2ServerCertificateState server_hello server_cert server_hello.cipher_suite server_hello.dh_keys
+
+public export
+servercert_to_serverkex : TLSState ServerCert2 -> List Bits8 -> Either String ()
+servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
+  let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_kex) alert_or_arecord2.decode
+  | (Pure [] $ Right (tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
+  | (Pure [] $ Left (_, alert)) => Left $ "TLS alert: " <+> show alert
+  | (Pure leftover _) => Left $ "Parsing error: overfed, leftover: " <+> xxd (map get leftover)
+  | (Fail err) => Left $ "Parsing error: " <+> show err
+  | _ => Left "Parsing error: underfed"
+  let (MkDPair _ (Handshake [MkDPair _ (ServerKeyExchange server_kex)])) = record'
+  | _ => Left $ "Parsing error: record not server_hello"
+  ?aew
