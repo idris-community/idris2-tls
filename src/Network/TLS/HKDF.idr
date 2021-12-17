@@ -124,3 +124,34 @@ tls13_verify_data' {algo} wit traffic_secret records_hash =
         tls13_hkdf_expand_label algo traffic_secret (encode_ascii "finished") [] $ digest_nbyte {algo}
   in toList $ hkdf_extract algo finished_key records_hash
 
+public export
+data Application2Keys : (iv : Nat) -> (key : Nat) -> (mac : Nat) -> Type where
+  MkApplication2Keys : {iv,key,mac : Nat} ->
+                      (master_secret : Vect 48 Bits8) ->
+                      (client_mac_key : Vect mac Bits8) ->
+                      (server_mac_key : Vect mac Bits8) ->
+                      (client_application_key : Vect key Bits8) ->
+                      (server_application_key : Vect key Bits8) ->
+                      (client_application_iv  : Vect iv  Bits8) ->
+                      (server_application_iv  : Vect iv  Bits8) ->
+                      Application2Keys iv key mac
+
+hmac_stream : {algo: _} -> Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
+hmac_stream {algo} hwit secret seed = 
+  stream_concat 
+  $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
+  $ iterate (toList . hmac algo secret) seed
+
+public export
+tls12_application_derive : {algo: _} -> Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
+                           Application2Keys iv key mac
+tls12_application_derive {algo} hwit iv key mac shared_secret client_random server_random =
+  let master_secret = 
+        toList
+        $ Stream.take 48 
+        $ hmac_stream hwit shared_secret 
+        $ (encode_ascii "master secret") <+> client_random <+> server_random
+      secret_material = 
+        hmac_stream hwit master_secret
+        $ (encode_ascii "key expansion") <+> client_random <+> server_random
+  in ?awee

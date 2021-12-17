@@ -19,7 +19,7 @@ import Network.TLS
 import Network.TLS.Record
 import Utils.Bytes
 import Utils.Misc
-import Utils.Network
+import Utils.Network.C
 import Utils.Parser
 
 -- TODO: FIX: takes about 1 second to compile for some reason
