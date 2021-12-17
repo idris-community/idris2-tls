@@ -270,3 +270,7 @@ init' (x :: xs) = init (x :: xs)
 public export
 uncons1 : List1 a -> (List a, a)
 uncons1 lst = (init lst, last lst)
+
+public export
+splitAt : (n : Nat) -> Stream a -> (Vect n a, Stream a)
+splitAt n s = (take n s, drop n s)

@@ -137,8 +137,8 @@ data Application2Keys : (iv : Nat) -> (key : Nat) -> (mac : Nat) -> Type where
                       Application2Keys iv key mac
 
 hmac_stream : {algo: _} -> Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
-hmac_stream {algo} hwit secret seed = 
-  stream_concat 
+hmac_stream {algo} hwit secret seed =
+  stream_concat
   $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
   $ iterate (toList . hmac algo secret) seed
 
@@ -146,12 +146,25 @@ public export
 tls12_application_derive : {algo: _} -> Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
                            Application2Keys iv key mac
 tls12_application_derive {algo} hwit iv key mac shared_secret client_random server_random =
-  let master_secret = 
-        toList
-        $ Stream.take 48 
-        $ hmac_stream hwit shared_secret 
+  let master_secret =
+        Stream.take 48
+        $ hmac_stream hwit shared_secret
         $ (encode_ascii "master secret") <+> client_random <+> server_random
-      secret_material = 
-        hmac_stream hwit master_secret
-        $ (encode_ascii "key expansion") <+> client_random <+> server_random
-  in ?awee
+      secret_material =
+        hmac_stream hwit
+          (toList master_secret)
+          (encode_ascii "key expansion" <+> client_random <+> server_random)
+      (client_mac_key, secret_material)         = Misc.splitAt mac secret_material
+      (server_mac_key, secret_material)         = Misc.splitAt mac secret_material
+      (client_application_key, secret_material) = Misc.splitAt key secret_material
+      (server_application_key, secret_material) = Misc.splitAt key secret_material
+      (client_application_iv, secret_material)  = Misc.splitAt iv  secret_material
+      (server_application_iv, secret_material)  = Misc.splitAt iv  secret_material
+  in MkApplication2Keys
+       master_secret
+       client_mac_key
+       server_mac_key
+       client_application_key
+       server_application_key
+       client_application_iv
+       server_application_iv

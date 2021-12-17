@@ -90,6 +90,20 @@ tls2_test sock target_hostname state = do
   let Right state = serverhello2_to_servercert state b_cert
   | Left err => putStrLn err
 
+  Right b_skex <- read_record sock
+  | Left err => putStrLn err
+
+  putStrLn "kex"
+  let Right state = servercert_to_serverkex state b_skex
+  | Left err => putStrLn err
+
+  Right b_s_hello_done <- read_record sock
+  | Left err => putStrLn err
+
+  putStrLn "server hello done"
+  let Right state = serverkex_process_serverhellodone state b_s_hello_done
+  | Left err => putStrLn err
+
   putStrLn "ok tls/1.2"
 
 tls_test : HasIO m => (target_hostname : String) -> m ()

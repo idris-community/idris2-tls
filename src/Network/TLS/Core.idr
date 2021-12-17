@@ -103,8 +103,9 @@ record TLS2ServerCertificateState where
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
 export
-data TLS2ServerKEXState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
-  MkTLS2ServerKEXState : (a' : AEAD a) -> (h' : Hash h) -> h -> List Bits8 -> TLS2ServerKEXState a a' h h'
+data TLS2ServerKEXState : (mac_key_len : Nat) -> (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
+  MkTLS2ServerKEXState : (a' : AEAD a) -> (h' : Hash h) -> (Application2Keys (iv_bytes @{a'}) (key_bytes @{a'}) mac_key_len) ->
+                         TLS2ServerKEXState mac_key_len a a' h h'
 
 public export
 data TLSStep : Type where
@@ -114,6 +115,7 @@ data TLSStep : Type where
   ServerHello3 : TLSStep
   Application3 : TLSStep
   ServerCert2 : TLSStep
+  ServerKEX2 : TLSStep
 
 public export
 data TLSState : TLSStep -> Type where
@@ -123,6 +125,7 @@ data TLSState : TLSStep -> Type where
   TLS3_Application : TLS3ApplicationState a b -> TLSState Application3
   TLS2_ServerHello : TLS2ServerHelloState -> TLSState ServerHello2
   TLS2_ServerCertificate : TLS2ServerCertificateState -> TLSState ServerCert2
+  TLS2_ServerKEX : TLS2ServerKEXState mac a b algo d -> TLSState ServerKEX2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
@@ -318,7 +321,7 @@ serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
   Right $ TLS2_ServerCertificate $ MkTLS2ServerCertificateState server_hello server_cert server_hello.cipher_suite server_hello.dh_keys
 
 public export
-servercert_to_serverkex : TLSState ServerCert2 -> List Bits8 -> Either String ()
+servercert_to_serverkex : TLSState ServerCert2 -> List Bits8 -> Either String (TLSState ServerKEX2)
 servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
   let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_kex) alert_or_arecord2.decode
   | (Pure [] $ Right (tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
@@ -328,4 +331,30 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
   | _ => Left "Parsing error: underfed"
   let (MkDPair _ (Handshake [MkDPair _ (ServerKeyExchange server_kex)])) = record'
   | _ => Left $ "Parsing error: record not server_hello"
-  ?aew
+  let Just shared_secret = key_exchange (server_kex.server_pk_group) (server_kex.server_pk_body) (toList server_cert.dh_keys)
+  | Nothing => Left "cannot parse server public key"
+  let (hash ** hwit) = ciphersuite_to_prf_type server_cert.cipher_suite
+  let (aead ** awit) = ciphersuite_to_aead_type server_cert.cipher_suite
+  let app_key =
+        tls12_application_derive hwit
+          (iv_bytes {a=aead})
+          (key_bytes {a=aead})
+          (ciphersuite_to_mac_key_len server_cert.cipher_suite)
+          shared_secret
+          (toList server_cert.server_hello.client_random)
+          (toList server_cert.server_hello.server_random)
+  -- TODO: check if key is signed by the certificate
+  Right $ TLS2_ServerKEX $ MkTLS2ServerKEXState awit hwit app_key
+
+public export
+serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (TLSState ServerKEX2)
+serverkex_process_serverhellodone og@(TLS2_ServerKEX server_kex) b_hello_done = do
+  let (Pure [] $ Right (TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_hello_done) alert_or_arecord2.decode
+  | (Pure [] $ Right (tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
+  | (Pure [] $ Left (_, alert)) => Left $ "TLS alert: " <+> show alert
+  | (Pure leftover _) => Left $ "Parsing error: overfed, leftover: " <+> xxd (map get leftover)
+  | (Fail err) => Left $ "Parsing error: " <+> show err
+  | _ => Left "Parsing error: underfed"
+  let (MkDPair _ (Handshake [MkDPair _ (ServerHelloDone _)])) = record'
+  | _ => Left $ "Parsing error: record not server_hello"
+  Right og
