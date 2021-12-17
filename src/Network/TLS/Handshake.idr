@@ -158,6 +158,16 @@ namespace Message
   Show ServerHelloDone where
     show x = show_record "ServerHelloDone" []
 
+  public export
+  record ClientKeyExchange where
+    constructor MkClientKeyExchange
+    public_key : List Bits8
+
+  Show ClientKeyExchange where
+    show x = show_record "ClientKeyExchange" 
+      [ ("public_key", show x.public_key)
+      ]
+
 public export
 data Handshake : HandshakeType -> Type where
   ClientHello : ClientHello -> Handshake ClientHello
@@ -169,6 +179,7 @@ data Handshake : HandshakeType -> Type where
   NewSessionTicket : NewSessionTicket -> Handshake NewSessionTicket
   ServerKeyExchange : ServerKeyExchange -> Handshake ServerKeyExchange
   ServerHelloDone : ServerHelloDone -> Handshake ServerHelloDone
+  ClientKeyExchange : ClientKeyExchange -> Handshake ClientKeyExchange
 
 public export
 Show (Handshake type) where
@@ -181,6 +192,7 @@ Show (Handshake type) where
   show (NewSessionTicket x) = show x
   show (ServerKeyExchange x) = show x
   show (ServerHelloDone x) = show x
+  show (ClientKeyExchange x) = show x
 
 XHandshake : Type
 XHandshake = Eithers 
@@ -193,6 +205,7 @@ XHandshake = Eithers
   , Handshake NewSessionTicket
   , Handshake ServerKeyExchange
   , Handshake ServerHelloDone
+  , Handshake ClientKeyExchange
   ]
 
 hack_handshake : DPair _ Handshake -> XHandshake
@@ -204,18 +217,20 @@ hack_handshake (CertificateVerify ** x)   = Right (Right (Right (Right (Left x))
 hack_handshake (Finished ** x)            = Right (Right (Right (Right (Right (Left x)))))
 hack_handshake (NewSessionTicket ** x)    = Right (Right (Right (Right (Right (Right (Left x))))))
 hack_handshake (ServerKeyExchange ** x)   = Right (Right (Right (Right (Right (Right (Right (Left x)))))))
-hack_handshake (ServerHelloDone ** x)     = Right (Right (Right (Right (Right (Right (Right (Right x)))))))
+hack_handshake (ServerHelloDone ** x)     = Right (Right (Right (Right (Right (Right (Right (Right (Left x))))))))
+hack_handshake (ClientKeyExchange ** x)   = Right (Right (Right (Right (Right (Right (Right (Right (Right x))))))))
 
 fix_handshake : XHandshake -> DPair _ Handshake
-fix_handshake (Left x)                                                          = (ClientHello ** x)
-fix_handshake (Right (Left x))                                                  = (ServerHello ** x)
-fix_handshake (Right (Right (Left x)))                                          = (EncryptedExtensions ** x)
-fix_handshake (Right (Right (Right (Left x))))                                  = (Certificate ** x)
-fix_handshake (Right (Right (Right (Right (Left x)))))                          = (CertificateVerify ** x)
-fix_handshake (Right (Right (Right (Right (Right (Left x))))))                  = (Finished ** x)
-fix_handshake (Right (Right (Right (Right (Right (Right (Left x)))))))          = (NewSessionTicket ** x)
-fix_handshake (Right (Right (Right (Right (Right (Right (Right (Left x))))))))  = (ServerKeyExchange ** x)
-fix_handshake (Right (Right (Right (Right (Right (Right (Right (Right x)))))))) = (ServerHelloDone ** x)
+fix_handshake (Left x)                                                                  = (ClientHello ** x)
+fix_handshake (Right (Left x))                                                          = (ServerHello ** x)
+fix_handshake (Right (Right (Left x)))                                                  = (EncryptedExtensions ** x)
+fix_handshake (Right (Right (Right (Left x))))                                          = (Certificate ** x)
+fix_handshake (Right (Right (Right (Right (Left x)))))                                  = (CertificateVerify ** x)
+fix_handshake (Right (Right (Right (Right (Right (Left x))))))                          = (Finished ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Left x)))))))                  = (NewSessionTicket ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Right (Left x))))))))          = (ServerKeyExchange ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Right (Right (Left x)))))))))  = (ServerHelloDone ** x)
+fix_handshake (Right (Right (Right (Right (Right (Right (Right (Right (Right x))))))))) = (ClientKeyExchange ** x)
 
 namespace Parsing
   export
@@ -326,6 +341,14 @@ namespace Parsing
     $ is [0x00, 0x00, 0x00]
 
   export
+  no_id_client_key_exchange : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (Handshake ClientKeyExchange)
+  no_id_client_key_exchange = map
+    (ClientKeyExchange . MkClientKeyExchange)
+    (\(ClientKeyExchange (MkClientKeyExchange x)) => x)
+    $ lengthed 3
+    $ (under "public key" $ lengthed_list 1 token)
+
+  export
   with_id : (Cons (Posed Bits8) i, Monoid i) => {type : HandshakeType} -> Parserializer Bits8 i (SimpleError String) (Handshake type) -> Parserializer Bits8 i (SimpleError String) (Handshake type)
   with_id pser = under (show type <+> " handshake") $ is (to_vect $ handshake_type_to_id type) *> pser
 
@@ -341,6 +364,7 @@ namespace Parsing
     <|> (with_id no_id_new_session_ticket)
     <|> (with_id no_id_server_key_exchange)
     <|> (with_id no_id_server_hello_done)
+    <|> (with_id no_id_client_key_exchange)
 
   export
   handshake2 : (Cons (Posed Bits8) i, Monoid i) => Parserializer Bits8 i (SimpleError String) (DPair _ Handshake)
@@ -354,4 +378,4 @@ namespace Parsing
     <|> (with_id no_id_new_session_ticket)
     <|> (with_id no_id_server_key_exchange)
     <|> (with_id no_id_server_hello_done)
-
+    <|> (with_id no_id_client_key_exchange)

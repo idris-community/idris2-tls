@@ -318,6 +318,10 @@ ciphersuite_to_mac_key_len : CipherSuite -> Nat
 ciphersuite_to_mac_key_len _ = 0
 
 public export
+ciphersuite_to_verify_data_len : CipherSuite -> Nat
+ciphersuite_to_verify_data_len _ = 12
+
+public export
 ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
 ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
 ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
@@ -418,6 +422,7 @@ data HandshakeType : Type where
   Finished : HandshakeType
   ServerKeyExchange : HandshakeType
   ServerHelloDone : HandshakeType
+  ClientKeyExchange : HandshakeType
 
 public export
 Show HandshakeType where
@@ -430,6 +435,7 @@ Show HandshakeType where
   show Finished = "Finished"
   show ServerKeyExchange = "ServerKeyExchange"
   show ServerHelloDone = "ServerHelloDone"
+  show ClientKeyExchange = "ClientKeyExchange"
 
 public export
 handshake_type_to_id : HandshakeType -> Bits8
@@ -442,6 +448,7 @@ handshake_type_to_id CertificateVerify = 0x0f
 handshake_type_to_id Finished = 0x14
 handshake_type_to_id ServerKeyExchange = 0x0c
 handshake_type_to_id ServerHelloDone = 0x0e
+handshake_type_to_id ClientKeyExchange = 0x10
 
 public export
 id_to_handshake_type : Bits8 -> Maybe HandshakeType
@@ -454,6 +461,7 @@ id_to_handshake_type 0x0f = Just CertificateVerify
 id_to_handshake_type 0x14 = Just Finished
 id_to_handshake_type 0x0c = Just ServerKeyExchange
 id_to_handshake_type 0x0e = Just ServerHelloDone
+id_to_handshake_type 0x10 = Just ClientKeyExchange
 id_to_handshake_type _ = Nothing
 
 public export
@@ -461,22 +469,26 @@ data RecordType : Type where
   ChangeCipherSpec : RecordType
   Handshake : RecordType
   ApplicationData : RecordType
+  Alert : RecordType
 
 public export
 Show RecordType where
   show ChangeCipherSpec = "ChangeCipherSpec"
   show Handshake = "Handshake"
   show ApplicationData = "ApplicationData"
+  show Alert = "Alert"
 
 public export
 record_type_to_id : RecordType -> Bits8
 record_type_to_id ChangeCipherSpec = 0x14
 record_type_to_id Handshake = 0x16
 record_type_to_id ApplicationData = 0x17
+record_type_to_id Alert = 0x15
 
 public export
 id_to_record_type : Bits8 -> Maybe RecordType
 id_to_record_type 0x14 = Just ChangeCipherSpec
+id_to_record_type 0x15 = Just Alert
 id_to_record_type 0x16 = Just Handshake
 id_to_record_type 0x17 = Just ApplicationData
 id_to_record_type _ = Nothing
