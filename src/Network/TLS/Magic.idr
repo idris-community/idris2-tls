@@ -307,6 +307,17 @@ ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha25
 ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
 
 public export
+ciphersuite_to_prf_type : CipherSuite -> (DPair Type Hash)
+ciphersuite_to_prf_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_prf_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_prf_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_prf_type _ = MkDPair Sha256 %search
+
+public export
+ciphersuite_to_mac_key_len : CipherSuite -> Nat
+ciphersuite_to_mac_key_len _ = 0
+
+public export
 ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
 ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
 ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
@@ -406,6 +417,7 @@ data HandshakeType : Type where
   CertificateVerify : HandshakeType
   Finished : HandshakeType
   ServerKeyExchange : HandshakeType
+  ServerHelloDone : HandshakeType
 
 public export
 Show HandshakeType where
@@ -417,6 +429,7 @@ Show HandshakeType where
   show CertificateVerify = "CertificateVerify"
   show Finished = "Finished"
   show ServerKeyExchange = "ServerKeyExchange"
+  show ServerHelloDone = "ServerHelloDone"
 
 public export
 handshake_type_to_id : HandshakeType -> Bits8
@@ -428,6 +441,7 @@ handshake_type_to_id Certificate = 0x0b
 handshake_type_to_id CertificateVerify = 0x0f
 handshake_type_to_id Finished = 0x14
 handshake_type_to_id ServerKeyExchange = 0x0c
+handshake_type_to_id ServerHelloDone = 0x0e
 
 public export
 id_to_handshake_type : Bits8 -> Maybe HandshakeType
@@ -438,6 +452,8 @@ id_to_handshake_type 0x08 = Just EncryptedExtensions
 id_to_handshake_type 0x0b = Just Certificate
 id_to_handshake_type 0x0f = Just CertificateVerify
 id_to_handshake_type 0x14 = Just Finished
+id_to_handshake_type 0x0c = Just ServerKeyExchange
+id_to_handshake_type 0x0e = Just ServerHelloDone
 id_to_handshake_type _ = Nothing
 
 public export
