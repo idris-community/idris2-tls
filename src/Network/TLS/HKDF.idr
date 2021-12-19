@@ -126,24 +126,24 @@ record Application2Keys (iv : Nat) (key : Nat) (mac : Nat) where
   client_application_iv  : Vect iv  Bits8
   server_application_iv  : Vect iv  Bits8
 
-hmac_stream : Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
-hmac_stream hwit secret seed =
+hmac_stream : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> Stream Bits8
+hmac_stream algo secret seed =
   stream_concat
   $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
   $ iterate (toList . hmac algo secret) seed
 
 public export
-tls12_application_derive : Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
+tls12_application_derive : (0 algo : Type) -> Hash algo => (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
                            Application2Keys iv key mac
-tls12_application_derive hwit iv key mac shared_secret client_random server_random =
+tls12_application_derive algo iv key mac shared_secret client_random server_random =
   let master_secret =
         Stream.take 48
-        $ hmac_stream hwit shared_secret
+        $ hmac_stream algo shared_secret
         $ (encode_ascii "master secret") <+> client_random <+> server_random
       secret_material =
-        hmac_stream hwit
+        hmac_stream algo
           (toList master_secret)
-          (encode_ascii "key expansion" <+> client_random <+> server_random)
+          (encode_ascii "key expansion" <+> server_random <+> client_random)
       (client_mac_key, secret_material)         = Misc.splitAt mac secret_material
       (server_mac_key, secret_material)         = Misc.splitAt mac secret_material
       (client_application_key, secret_material) = Misc.splitAt key secret_material
@@ -160,6 +160,6 @@ tls12_application_derive hwit iv key mac shared_secret client_random server_rand
        server_application_iv
 
 public export
-tls12_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
+tls12_verify_data : (0 algo : Type) -> Hash algo => (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
 tls12_verify_data algo n master_secret records_hash =
   take _ $ hmac_stream algo master_secret (encode_ascii "client finished" <+> records_hash)
