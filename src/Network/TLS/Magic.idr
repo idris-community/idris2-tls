@@ -289,7 +289,11 @@ ciphersuite_to_prf_type _ = MkDPair Sha256 %search
 
 public export
 ciphersuite_to_mac_key_len : CipherSuite -> Nat
-ciphersuite_to_mac_key_len _ = 4
+ciphersuite_to_mac_key_len _ = 0
+
+public export
+ciphersuite_to_iv_len : CipherSuite -> Nat
+ciphersuite_to_iv_len _ = 4
 
 public export
 ciphersuite_to_verify_data_len : CipherSuite -> Nat

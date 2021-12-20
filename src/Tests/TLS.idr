@@ -114,13 +114,14 @@ tls_test target_hostname port = do
 
   putStrLn "genreating keys"
   keys <- traverse gen_key (X25519 ::: [ SECP256r1 ])
+  random <- random_bytes _
   putStrLn "done"
 
   let
     init_state =
       MkTLSInitialState
         target_hostname
-        (map (cast . finToNat) range)
+        random
         []
         (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ])
         (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
