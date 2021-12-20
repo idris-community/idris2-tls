@@ -21,6 +21,8 @@ import Utils.Misc
 import Utils.Parser
 import Control.Monad.Error.Either
 
+import Debug.Trace
+
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
 tls13_supported_cipher_suites = singleton TLS_AES_128_GCM_SHA256
@@ -107,7 +109,7 @@ record TLS2ServerKEXState where
   constructor MkTLS2ServerKEXState
   digest_state : Sha256
   chosen_pk : List Bits8
-  app_key : Application2Keys 4 16 mac_key_len
+  app_key : Application2Keys 4 16 0
 
 public export
 data TLSStep : Type where
@@ -325,7 +327,7 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
   | Nothing => Left "cannot parse server public key"
   let app_key =
         tls12_application_derive (Sha256)
-          (ciphersuite_to_mac_key_len server_cert.cipher_suite)
+          (ciphersuite_to_iv_len server_cert.cipher_suite)
           16
           (ciphersuite_to_mac_key_len server_cert.cipher_suite)
           shared_secret
@@ -348,11 +350,12 @@ encrypt_to_wrapper2 key iv plaintext record_id sequence =
   let aad = 
         (toList $ to_be {n=8} (cast {to=Bits64} sequence)) 
         <+> [record_type_to_id record_id, 0x03, 0x03] -- 0x03 0x03 is the byte representation of TLS 1.2
-        <+> (toList $ to_be {n=2} (cast {to=Bits16} sequence))
+        <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext))
       explicit_nonce = integer_to_be 8 $ cast sequence
-      (ciphertext, mac) = encrypt_aes_128_gcm key (iv ++ explicit_nonce) plaintext aad
+      (ciphertext, mac) = encrypt_aes_128_gcm key (iv ++ explicit_nonce) plaintext $ trace ("aad: " <+> xxd aad) aad
       wrapper = MkWrapper2 (toList explicit_nonce) ciphertext mac
-  in (wrapper2 {i = List (Posed Bits8)} 8).encode (record_id, TLS12, wrapper)
+      b_wrapper = (wrapper2 {i = List (Posed Bits8)} 8).encode (record_id, TLS12, wrapper)
+  in trace ("b_wrapper: " <+> xxd b_wrapper) b_wrapper
 
 public export
 serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (List Bits8, TLSState ServerKEX2)
@@ -370,11 +373,10 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX server_kex) b_hello_done = 
         $ MkFinished 
         $ toList
         (tls12_verify_data Sha256 12 (toList server_kex.app_key.master_secret) (toList $ finalize server_kex.digest_state))
-  let app_iv = server_kex.app_key.client_application_iv
   let b_client_verify_data =
         encrypt_to_wrapper2 
           server_kex.app_key.client_application_key
-          app_iv
+          server_kex.app_key.client_application_iv
           client_verify_data
           Handshake Z
   let digest_state =
