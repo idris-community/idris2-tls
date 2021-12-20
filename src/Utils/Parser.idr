@@ -1,6 +1,5 @@
 module Utils.Parser
 
-import Debug.Trace
 import Data.List
 import Data.List.Elem
 import Data.List1
