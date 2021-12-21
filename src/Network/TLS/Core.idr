@@ -229,7 +229,7 @@ decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (ma
                        Maybe (TLS3ServerHelloState aead aead' algo algo', List Bits8)
 decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' digest_state hk counter) (MkWrapper ciphertext mac_tag) record_header =
   let s_hs_iv = zipWith xor hk.server_handshake_iv $ integer_to_be _ $ natToInteger counter
-  in case decrypt @{a'} hk.server_handshake_key s_hs_iv ciphertext record_header $ toList mac_tag of
+  in case decrypt_with_aad @{a'} hk.server_handshake_key s_hs_iv ciphertext record_header $ toList mac_tag of
         (_, False) => Nothing
         (plaintext, True) => Just (MkTLS3ServerHelloState a' h' digest_state hk (S counter), plaintext)
 
@@ -301,7 +301,7 @@ decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_bytes @{a
                        Maybe (TLS3ApplicationState aead aead', List Bits8)
 decrypt_ap_s_wrapper (MkTLS3ApplicationState a' ak c_counter s_counter) (MkWrapper ciphertext mac_tag) record_header =
   let s_ap_iv = zipWith xor ak.server_application_iv $ integer_to_be _ $ natToInteger s_counter
-  in case decrypt @{a'} ak.server_application_key s_ap_iv ciphertext record_header $ toList mac_tag of
+  in case decrypt_with_aad @{a'} ak.server_application_key s_ap_iv ciphertext record_header $ toList mac_tag of
         (_, False) => Nothing
         (plaintext, True) => Just (MkTLS3ApplicationState a' ak c_counter (S s_counter), plaintext)
 
@@ -435,15 +435,12 @@ decrypt_from_wrapper2 : AEAD a =>
                         Either String (List Bits8)
 decrypt_from_wrapper2 sequence record_type wrapper iv key =
   let iv' = tls12_derive_iv' iv wrapper.iv_data
-      (plaintext, _) = decrypt key iv' wrapper.encrypted_data [] []
-      aad =
+      aadf = (\plaintext =>
         (toList $ to_be {n=8} (cast {to=Bits64} sequence)) 
         <+> [record_type_to_id record_type, 0x03, 0x03] -- 0x03 0x03 is the byte representation of TLS 1.2
-        <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext))
-      auth_tag = create_aad key iv' aad wrapper.encrypted_data
-  in if auth_tag `s_eq` wrapper.auth_tag
-       then Right $ plaintext
-       else Left "cannot decrypt wrapper"
+        <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext)))
+      (plaintext, ok) = decrypt key iv' wrapper.encrypted_data aadf (toList wrapper.auth_tag)
+  in if ok then Right $ plaintext else Left "cannot decrypt wrapper"
 
 public export
 applicationready2_to_application2 : TLSState AppReady2 -> List Bits8 -> Either String (TLSState Application2)
