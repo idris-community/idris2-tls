@@ -8,6 +8,7 @@ import Data.Nat
 import Data.Stream
 import Data.Vect
 import Utils.Misc
+import Utils.Bytes
 
 matmul : Num a => {p : _} -> (op : Vect m a -> Vect m b -> c) -> Vect n (Vect m a) -> Vect m (Vect p b) -> Vect n (Vect p c)
 matmul op [] ys = []
@@ -235,8 +236,14 @@ expand_key' {n_b = S n_b'} counter (rc :: rcs) (x :: xs) =
     y = last (x :: xs)
   in
     case counter of
-      FZ => let z = (zipWith xor (rc :: replicate _ 0) $ zipWith xor x $ sub_word $ rot_word 1 $ y) in z :: expand_key' Data.Fin.last rcs (snoc xs z)
-      (FS counter') => let z = zipWith xor x y in z :: expand_key' (weaken counter') (rc :: rcs) (snoc xs z)
+      FZ => let z = (vecxor (rc :: replicate _ 0) $ vecxor x $ sub_word $ rot_word 1 $ y) in z :: expand_key' Data.Fin.last rcs (snoc xs z)
+      (FS counter') =>
+        let
+          z = vecxor x $ case isLT 6 n_k of
+            Yes wit => if finToNat (FS counter') == 4 then sub_word y else y
+            No contra => y
+        in
+          z :: expand_key' (weaken counter') (rc :: rcs) (snoc xs z)
 
 expand_key : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> Vect n_k (Vect n_b Bits8) -> Stream (Vect n_b Bits8)
 expand_key {n_k = S n_k'} k = expand_key' FZ rcons k
