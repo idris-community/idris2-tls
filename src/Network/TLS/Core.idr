@@ -332,18 +332,20 @@ encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_c
   in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
 
 public export
-serverhello2_to_servercert : TLSState ServerHello2 -> List Bits8 -> Either String (TLSState ServerCert2)
-serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
-  (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) <- parse_record b_cert alert_or_arecord2
-  | _ => Left $ "Parsing error: record not server_hello"
-  Right $ TLS2_ServerCertificate 
-        $ MkTLS2ServerCertificateState 
-            server_hello 
-            server_cert 
-            server_hello.cipher_suite
-            server_hello.dh_keys
-            server_hello.digest_wit
-            (update @{server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
+serverhello2_to_servercert : Monad m => TLSState ServerHello2 -> List Bits8 -> (Certificate -> m Bool) -> m (Either String (TLSState ServerCert2))
+serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runEitherT $ do
+  let Right (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) = parse_record b_cert alert_or_arecord2
+  | _ => throwE "Parsing error: record not server_hello"
+  True <- MkEitherT $ map Right $ cert_ok server_cert
+  | False => throwE "cannot verify certificate"
+  pure $ TLS2_ServerCertificate 
+       $ MkTLS2ServerCertificateState 
+           server_hello 
+           server_cert 
+           server_hello.cipher_suite
+           server_hello.dh_keys
+           server_hello.digest_wit
+           (update @{server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
 
 public export
 servercert_to_serverkex : TLSState ServerCert2 -> List Bits8 -> Either String (TLSState ServerKEX2)

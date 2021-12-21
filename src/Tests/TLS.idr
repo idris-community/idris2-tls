@@ -63,15 +63,9 @@ test_http_body hostname = "GET / HTTP/1.1\nHost: " <+> hostname <+> "\n\n"
 example_hostname : String
 example_hostname = "www.cloudflare.com"
 
-handshake : HasIO io => Socket -> TLSState ServerHello3 -> io (Either String (TLSState Application3))
-handshake sock state = do
-  Right response <- read_record sock
-  | Left err => pure $ Left err
-  parsed <- tls3_serverhello_to_application state response (const $ pure True)
-  case parsed of
-    Right (Right (client_verify, state)) => (send_bytes sock client_verify) *> (pure $ Right state)
-    Right (Left (state)) => handshake sock state
-    Left err => pure $ Left err
+--- TODO: this
+certificate_check : HasIO io => Certificate -> io Bool
+certificate_check certficiate = pure True
 
 gen_key : MonadRandom m => (g : SupportedGroup) -> m (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 gen_key group = do
@@ -86,7 +80,7 @@ tls2_test sock target_hostname state = do
   | Left err => putStrLn err
 
   putStrLn "parsing certificate"
-  let Right state = serverhello2_to_servercert state b_cert
+  Right state <- serverhello2_to_servercert state b_cert certificate_check
   | Left err => putStrLn err
 
   Right b_skex <- read_record sock
@@ -134,6 +128,16 @@ tls2_test sock target_hostname state = do
   putStrLn $ show $ utf8_decode plaintext
 
   putStrLn "ok tls/1.2"
+
+handshake : HasIO io => Socket -> TLSState ServerHello3 -> io (Either String (TLSState Application3))
+handshake sock state = do
+  Right response <- read_record sock
+  | Left err => pure $ Left err
+  parsed <- tls3_serverhello_to_application state response certificate_check
+  case parsed of
+    Right (Right (client_verify, state)) => (send_bytes sock client_verify) *> (pure $ Right state)
+    Right (Left (state)) => handshake sock state
+    Left err => pure $ Left err
 
 tls3_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello3 -> m ()
 tls3_test sock target_hostname state = do
