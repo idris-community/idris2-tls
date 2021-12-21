@@ -10,6 +10,8 @@ import Crypto.AES
 import Crypto.GF128
 import Crypto.ChaCha
 
+import Debug.Trace
+
 public export
 interface AEAD (0 a : Type) where
   ||| IV generated during key exchange
@@ -150,17 +152,12 @@ AEAD TLS12_AES_256_GCM where
         ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES256 key iv')
         mac_tag = aes_gcm_create_aad AES256 key iv' aad ciphertext
     in (explicit_iv, ciphertext, mac_tag)
-
+  
   decrypt key iv explicit_iv mac_key seq_no ciphertext aadf mac_tag' =
     let iv' = iv ++ explicit_iv
         plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES256 key iv')
         mac_tag = aes_gcm_create_aad AES256 key iv' (aadf plaintext) ciphertext
     in (plaintext, s_eq' (toList mac_tag) mac_tag')
-
-
-{-
-public export
-data ChaCha20_Poly1305 : Type where
 
 clamp : Integer -> Integer
 clamp r = r .&. 0x0ffffffc0ffffffc0ffffffc0fffffff
@@ -168,23 +165,39 @@ clamp r = r .&. 0x0ffffffc0ffffffc0ffffffc0fffffff
 poly1305_prime : Integer
 poly1305_prime = 0x3fffffffffffffffffffffffffffffffb
 
+chacha_create_aad : Vect 64 Bits8 -> List Bits8 -> List Bits8 -> Vect 16 Bits8
+chacha_create_aad polykey aad ciphertext =
+  let (r, s) = bimap (clamp . le_to_integer) le_to_integer $ splitAt 16 $ take 32 polykey
+      length_aad = toList $ to_le {n=8} $ cast {to=Bits64} $ length aad
+      length_ciphertext = toList $ to_le {n=8} $ cast {to=Bits64} $ length ciphertext
+      ns = map (\x => le_to_integer' (x <+> [0x01])) $ chunk 16 (pad 16 aad ++ pad 16 ciphertext ++ length_aad ++ length_ciphertext)
+  in integer_to_le 16 (s + foldl (\n,a => mul_mod r (a + n) poly1305_prime) 0 ns)
+
 public export
-AEAD ChaCha20_Poly1305 where
+data TLS1213_ChaCha20_Poly1305 : Type where
+
+public export
+AEAD TLS1213_ChaCha20_Poly1305 where
   iv_bytes = 12
-  tls12_iv_bytes = 4
   key_bytes = 32
   mac_bytes = 16
-  keystream key iv =
+  mac_key_bytes = 0
+  explicit_iv_bytes = 0
+
+  encrypt key iv [] seq_no plaintext aad =
     let k' = from_le {n=4} <$> group 8 4 key
-        i' = from_le {n=4} <$> group 3 4 iv
-    in stream_concat $ map (\c => toList $ ChaCha.block 10 (cast c) k' i') $ drop 1 nats
-  create_aad key iv aad ciphertext =
+        iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        i' = from_le {n=4} <$> group 3 4 iv'
+        (polykey :: keystream) = map (\c => chacha_rfc8439_block 10 (cast c) k' i') nats
+        ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ stream_concat keystream)
+        auth_tag = chacha_create_aad polykey aad ciphertext
+    in ([], ciphertext, auth_tag)
+
+  decrypt key iv [] [] seq_no ciphertext aadf mac_tag' =
     let k' = from_le {n=4} <$> group 8 4 key
-        i' = from_le {n=4} <$> group 3 4 iv
-        s = le_to_integer $ take 32 $ ChaCha.block 10 0 k' i'
-        r = clamp s
-        length_aad = toList $ to_le {n=4} $ cast {to=Bits32} $ length aad
-        length_ciphertext = toList $ to_le {n=4} $ cast {to=Bits32} $ length ciphertext
-        ns = map (\x => le_to_integer' (x <+> [0x01])) $ chunk 16 (ciphertext ++ length_aad ++ length_ciphertext)
-    in integer_to_le 16 (s + foldr (\n,a => mul_mod r (a + n) poly1305_prime) 0 ns)
--}
+        iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        i' = from_le {n=4} <$> group 3 4 iv'
+        (polykey :: keystream) = map (\c => chacha_rfc8439_block 10 (cast c) k' i') nats
+        plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ stream_concat keystream)
+        auth_tag = chacha_create_aad polykey (aadf plaintext) ciphertext
+    in (plaintext, toList auth_tag `s_eq'` mac_tag')
