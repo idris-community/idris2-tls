@@ -123,6 +123,11 @@ record TLS2AppReadyState a b c d e where
   constructor MkTLS2AppReadyState
   kex_state : TLS2ServerKEXState a b c d e
 
+export
+data TLS2ApplicationState : (mac_key_len : Nat) -> (aead : Type) -> AEAD aead -> Type where
+  MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (tls12_iv_bytes {a=a}) (key_bytes {a=a}) mac_key_len -> Nat -> Nat -> 
+                           TLS2ApplicationState mac_key_len a a'
+
 public export
 data TLSStep : Type where
   Init : TLSStep
@@ -134,6 +139,7 @@ data TLSStep : Type where
   ServerKEX2 : TLSStep
   ServerKEXDone2 : TLSStep
   AppReady2 : TLSStep
+  Application2 : TLSStep
 
 public export
 data TLSState : TLSStep -> Type where
@@ -146,6 +152,7 @@ data TLSState : TLSStep -> Type where
   TLS2_ServerKEX : TLS2ServerKEXState mac a b algo d -> TLSState ServerKEX2
   TLS2_ServerKEXDone : TLS2ServerKEXDoneState mac a b algo d -> TLSState ServerKEXDone2
   TLS2_AppReady : TLS2AppReadyState mac a b algo d -> TLSState AppReady2
+  TLS2_Application : TLS2ApplicationState a b c -> TLSState Application2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
@@ -380,7 +387,7 @@ encrypt_to_wrapper2 key iv plaintext record_id sequence =
   in b_wrapper
 
 public export
-serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (List Bits8, TLSState ServerKEXDone2)
+serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (TLSState ServerKEXDone2, List Bits8)
 serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key)) b_hello_done = do
   (MkDPair _ (Handshake [MkDPair _ (ServerHelloDone _)])) <- parse_record b_hello_done alert_or_arecord2
   | _ => Left $ "Parsing error: record not server_hello"
@@ -399,9 +406,8 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h'
         encrypt_to_wrapper2 app_key.client_application_key app_key.client_application_iv client_verify_data Handshake Z
   let digest_state =
         update client_verify_data digest_state
-  Right (b_client_kex <+> b_client_change_cipher_spec <+> b_client_verify_data
-        , TLS2_ServerKEXDone $ MkTLS2ServerKEXDoneState $ MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key)
-
+  Right (TLS2_ServerKEXDone $ MkTLS2ServerKEXDoneState $ MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key
+        , b_client_kex <+> b_client_change_cipher_spec <+> b_client_verify_data)
 public export
 serverhellodone_to_applicationready2 : TLSState ServerKEXDone2 -> List Bits8 -> Either String (TLSState AppReady2)
 serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changecipherspec = do
@@ -440,7 +446,7 @@ decrypt_from_wrapper2 sequence record_type wrapper iv key =
        else Left "cannot decrypt wrapper"
 
 public export
-applicationready2_to_application2 : TLSState AppReady2 -> List Bits8 -> Either String ()
+applicationready2_to_application2 : TLSState AppReady2 -> List Bits8 -> Either String (TLSState Application2)
 applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
   let (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key) = state.kex_state
   wrapper <- parse_tls12_wrapper @{a'} Handshake b_verifydata
@@ -450,3 +456,17 @@ applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
   | _ => Left $ "Parsing error: decrypted record not Finished"
   let verify_data = tls12_server_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state)
   maybe_to_either (guard $ toList verify_data `s_eq'` toList verify_data') "Verify data not match"
+  pure $ TLS2_Application $ MkTLS2ApplicationState a' app_key 1 1
+
+public export
+encrypt_to_record2 : TLSState Application2 -> List Bits8 -> (TLSState Application2, List Bits8)
+encrypt_to_record2 (TLS2_Application $ MkTLS2ApplicationState a' ak c_counter s_counter) plaintext =
+   let b_wrapper = encrypt_to_wrapper2 ak.client_application_key ak.client_application_iv plaintext ApplicationData c_counter
+   in (TLS2_Application $ MkTLS2ApplicationState a' ak (S c_counter) s_counter, b_wrapper)
+
+public export
+decrypt_from_record2 : TLSState Application2 -> List Bits8 -> Either String (TLSState Application2, List Bits8)
+decrypt_from_record2 (TLS2_Application $ MkTLS2ApplicationState a' ak c_counter s_counter) ciphertext = do
+  wrapper <- parse_tls12_wrapper @{a'} ApplicationData ciphertext
+  plaintext <- decrypt_from_wrapper2 s_counter ApplicationData wrapper ak.server_application_iv ak.server_application_key
+  Right (TLS2_Application $ MkTLS2ApplicationState a' ak c_counter (S s_counter), plaintext)
