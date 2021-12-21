@@ -14,10 +14,6 @@ Key : Type
 Key = Vect 8 Bits32 -- 32 * 8 = 256
 
 public export
-Nonce : Type
-Nonce = Vect 3 Bits32
-
-public export
 ChaChaState : Type
 ChaChaState = Vect 16 Bits32
 
@@ -25,10 +21,6 @@ ChaChaState = Vect 16 Bits32
 public export
 constants : Vect 4 Bits32
 constants = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574] -- ['expa', 'nd 3', '2-by', 'te k']
-
-public export
-mk_state : (counter : Bits32) -> Key -> Nonce -> ChaChaState
-mk_state counter key nonce = constants ++ key ++ [counter] ++ nonce
 
 public export
 rotl : Subset Nat (`LT` 32) -> Bits32 -> Bits32
@@ -79,6 +71,15 @@ run2x n_double_rounds s =
   go FZ = pure ()
   go (FS wit) = double_rotate *> go (weaken wit)
 
+||| ChaCha construction with 4 octets counter and 12 octets nonce as per RFC8439
 public export
-block : Nat -> (counter : Bits32) -> Key -> Nonce -> Vect 64 Bits8
-block rounds counter key nonce = concat $ map (to_le {n = 4}) $ run2x rounds $ constants ++ key ++ [counter] ++ nonce
+chacha_rfc8439_block : Nat -> (counter : Bits32) -> Key -> Vect 3 Bits32 -> Vect 64 Bits8
+chacha_rfc8439_block rounds counter key nonce = concat $ map (to_le {n = 4}) $ run2x rounds $ constants ++ key ++ [counter] ++ nonce
+
+||| ChaCha construction with 8 octets counter and 8 octets nonce as per the original ChaCha specification
+public export
+chacha_original_block : Nat -> (counter : Bits64) -> Key -> Vect 2 Bits32 -> Vect 64 Bits8
+chacha_original_block rounds counter key nonce = concat $ map (to_le {n = 4}) $ run2x rounds $ constants ++ key ++ split_word counter ++ nonce
+  where
+    split_word : Bits64 -> Vect 2 Bits32
+    split_word a = [ cast a, cast (shiftR a 32) ]

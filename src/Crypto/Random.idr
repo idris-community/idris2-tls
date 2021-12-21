@@ -145,7 +145,7 @@ chacha12_stream : Vect 8 Bits32 -> Stream Bits8
 chacha12_stream key = stream_concat $ map go nats
   where
     go : Nat -> List Bits8
-    go iv = toList $ block 6 (cast iv) key (map (cast . finToNat) range)
+    go iv = toList $ chacha_rfc8439_block 6 (cast iv) key (map (cast . finToNat) range)
 
 public export
 DRG ChaCha12DRG where
