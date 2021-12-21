@@ -21,6 +21,7 @@ interface AEAD (0 a : Type) where
   tls12_iv_bytes : Nat
   tls12_explicit_iv_bytes : Nat
   tls12_derive_iv : (sequence : Nat) -> (tls12_iv : Vect tls12_iv_bytes Bits8) -> (Vect tls12_explicit_iv_bytes Bits8, Vect iv_bytes Bits8)
+  tls12_derive_iv' : (tls12_iv : Vect tls12_iv_bytes Bits8) -> (Vect tls12_explicit_iv_bytes Bits8) -> Vect iv_bytes Bits8
 
 public export
 encrypt : AEAD a => Vect (key_bytes {a=a}) Bits8 -> Vect (iv_bytes {a=a}) Bits8 ->
@@ -86,6 +87,7 @@ AEAD AES_128_GCM where
   tls12_derive_iv sequence iv =
     let eiv = integer_to_be 8 $ cast sequence
     in (eiv, iv ++ eiv)
+  tls12_derive_iv' = (++)
 
 -- TODO: fix and test them
 public export
@@ -120,6 +122,7 @@ AEAD AES_256_GCM where
   tls12_derive_iv sequence iv =
     let eiv = integer_to_be 8 $ cast sequence
     in (eiv, iv ++ eiv)
+  tls12_derive_iv' = (++)
 
 {-
 public export

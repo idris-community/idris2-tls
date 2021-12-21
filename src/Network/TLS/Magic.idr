@@ -476,6 +476,14 @@ data RecordType : Type where
   Alert : RecordType
 
 public export
+Eq RecordType where
+  ChangeCipherSpec == ChangeCipherSpec = True
+  Handshake == Handshake = True
+  ApplicationData == ApplicationData = True
+  Alert == Alert = True
+  _ == _ = False
+
+public export
 Show RecordType where
   show ChangeCipherSpec = "ChangeCipherSpec"
   show Handshake = "Handshake"

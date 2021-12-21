@@ -4,7 +4,6 @@ import Crypto.Curve
 import Data.Bits
 import Data.List
 import Data.Vect
-import Debug.Trace
 import Utils.Bytes
 import Utils.Misc
 

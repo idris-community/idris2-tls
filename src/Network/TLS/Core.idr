@@ -21,8 +21,6 @@ import Utils.Misc
 import Utils.Parser
 import Control.Monad.Error.Either
 
-import Debug.Trace
-
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
 tls13_supported_cipher_suites =
@@ -115,6 +113,16 @@ data TLS2ServerKEXState : (mac_key_len : Nat) -> (aead : Type) -> AEAD aead -> (
                          (Application2Keys (tls12_iv_bytes @{a'}) (key_bytes @{a'}) mac_key_len) ->
                          TLS2ServerKEXState mac_key_len a a' h h'
 
+export
+record TLS2ServerKEXDoneState a b c d e where
+  constructor MkTLS2ServerKEXDoneState
+  kex_state : TLS2ServerKEXState a b c d e
+
+export
+record TLS2AppReadyState a b c d e where
+  constructor MkTLS2AppReadyState
+  kex_state : TLS2ServerKEXState a b c d e
+
 public export
 data TLSStep : Type where
   Init : TLSStep
@@ -124,6 +132,8 @@ data TLSStep : Type where
   Application3 : TLSStep
   ServerCert2 : TLSStep
   ServerKEX2 : TLSStep
+  ServerKEXDone2 : TLSStep
+  AppReady2 : TLSStep
 
 public export
 data TLSState : TLSStep -> Type where
@@ -134,6 +144,8 @@ data TLSState : TLSStep -> Type where
   TLS2_ServerHello : TLS2ServerHelloState algo -> TLSState ServerHello2
   TLS2_ServerCertificate : TLS2ServerCertificateState algo -> TLSState ServerCert2
   TLS2_ServerKEX : TLS2ServerKEXState mac a b algo d -> TLSState ServerKEX2
+  TLS2_ServerKEXDone : TLS2ServerKEXDoneState mac a b algo d -> TLSState ServerKEXDone2
+  TLS2_AppReady : TLS2AppReadyState mac a b algo d -> TLSState AppReady2
 
 encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g) ->
                      (SupportedGroup, List Bits8)
@@ -365,10 +377,10 @@ encrypt_to_wrapper2 key iv plaintext record_id sequence =
       (ciphertext, mac) = encrypt key iv' plaintext aad
       wrapper = MkWrapper2 eiv ciphertext mac
       b_wrapper = (wrapper2 {i = List (Posed Bits8)}).encode (record_id, TLS12, wrapper)
-  in trace ("b_wrapper: " <+> xxd b_wrapper) b_wrapper
+  in b_wrapper
 
 public export
-serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (List Bits8, TLSState ServerKEX2)
+serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (List Bits8, TLSState ServerKEXDone2)
 serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key)) b_hello_done = do
   (MkDPair _ (Handshake [MkDPair _ (ServerHelloDone _)])) <- parse_record b_hello_done alert_or_arecord2
   | _ => Left $ "Parsing error: record not server_hello"
@@ -382,10 +394,59 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h'
         $ Finished 
         $ MkFinished 
         $ toList
-        (tls12_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state))
+        (tls12_client_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state))
   let b_client_verify_data =
         encrypt_to_wrapper2 app_key.client_application_key app_key.client_application_iv client_verify_data Handshake Z
   let digest_state =
-        update (drop 5 b_client_verify_data) digest_state
+        update client_verify_data digest_state
   Right (b_client_kex <+> b_client_change_cipher_spec <+> b_client_verify_data
-        , TLS2_ServerKEX (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key))
+        , TLS2_ServerKEXDone $ MkTLS2ServerKEXDoneState $ MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key)
+
+public export
+serverhellodone_to_applicationready2 : TLSState ServerKEXDone2 -> List Bits8 -> Either String (TLSState AppReady2)
+serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changecipherspec = do
+  (MkDPair _ (ChangeCipherSpec _)) <- parse_record b_changecipherspec alert_or_arecord2
+  | _ => Left $ "Parsing error: record not ChangeCipherSpec"
+  pure $ TLS2_AppReady $ MkTLS2AppReadyState state.kex_state
+
+parse_tls12_wrapper : AEAD a => RecordType -> List Bits8 -> Either String (Wrapper2 (tls12_explicit_iv_bytes {a=a}) (mac_bytes {a=a}))
+parse_tls12_wrapper recordtype b_input = do
+  let (Pure [] (recordtype', TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_input) (wrapper2 {i = List (Posed Bits8)}).decode
+  | (Pure [] (_, tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
+  | (Pure leftover _) => Left $ "Parsing error: overfed, leftover: " <+> xxd (map get leftover)
+  | (Fail err) => Left $ "Parsing error: " <+> show err
+  | _ => Left "Parsing error: underfed"
+  if recordtype == recordtype'
+     then pure record'
+     else Left $ "expected record type: " <+> show recordtype <+> ", but got: " <+> show recordtype'
+
+decrypt_from_wrapper2 : AEAD a =>
+                        Nat ->
+                        RecordType ->
+                        Wrapper2 (tls12_explicit_iv_bytes {a=a}) (mac_bytes {a=a}) ->
+                        Vect (tls12_iv_bytes {a=a}) Bits8 ->
+                        Vect (key_bytes {a=a}) Bits8 ->
+                        Either String (List Bits8)
+decrypt_from_wrapper2 sequence record_type wrapper iv key =
+  let iv' = tls12_derive_iv' iv wrapper.iv_data
+      (plaintext, _) = decrypt key iv' wrapper.encrypted_data [] []
+      aad =
+        (toList $ to_be {n=8} (cast {to=Bits64} sequence)) 
+        <+> [record_type_to_id record_type, 0x03, 0x03] -- 0x03 0x03 is the byte representation of TLS 1.2
+        <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext))
+      auth_tag = create_aad key iv' aad wrapper.encrypted_data
+  in if auth_tag `s_eq` wrapper.auth_tag
+       then Right $ plaintext
+       else Left "cannot decrypt wrapper"
+
+public export
+applicationready2_to_application2 : TLSState AppReady2 -> List Bits8 -> Either String ()
+applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
+  let (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key) = state.kex_state
+  wrapper <- parse_tls12_wrapper @{a'} Handshake b_verifydata
+  plaintext <- decrypt_from_wrapper2 Z Handshake wrapper app_key.server_application_iv app_key.server_application_key 
+  let result = feed (map (uncurry MkPosed) $ enumerate Z plaintext) $ (with_id no_id_finished).decode {i = List (Posed Bits8)} 
+  let (Pure [] (Finished $ MkFinished verify_data')) = result
+  | _ => Left $ "Parsing error: decrypted record not Finished"
+  let verify_data = tls12_server_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state)
+  maybe_to_either (guard $ toList verify_data `s_eq'` toList verify_data') "Verify data not match"
