@@ -1,10 +1,13 @@
 module Tests.TLS
 
+import Crypto.Curve
+import Crypto.Curve.Weierstrass
+import Crypto.Curve.XCurves
+import Crypto.ECDH
 import Network.TLS.HKDF
 import Crypto.Hash
 import Crypto.Random
 import Crypto.Random.C
-import Crypto.ECDH
 import Data.Bits
 import Data.List
 import Data.List1

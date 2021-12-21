@@ -2,6 +2,7 @@ module Network.TLS.Magic
 
 import Data.Vect
 import Network.TLS.Parsing
+import Network.TLS.AEAD
 import Utils.Bytes
 import Utils.Misc
 import Crypto.Hash
@@ -256,35 +257,60 @@ public export
 data CipherSuite : Type where
   ||| TLS 1.3 Cipher Suites
   TLS_AES_128_GCM_SHA256 : CipherSuite
+  TLS_AES_256_GCM_SHA384 : CipherSuite
+  -- TLS_CHACHA20_POLY1305_SHA256 : CipherSuite
   ||| TLS 1.2 Cipher Suites
   TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 : CipherSuite
+  TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 : CipherSuite
   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 : CipherSuite
+  TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 : CipherSuite
 
 public export
 Show CipherSuite where
   show TLS_AES_128_GCM_SHA256 = "TLS_AES_128_GCM_SHA256"
+  show TLS_AES_256_GCM_SHA384 = "TLS_AES_256_GCM_SHA384"
+  -- show TLS_CHACHA20_POLY1305_SHA256 = "TLS_CHACHA20_POLY1305_SHA256"
   show TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+  show TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
   show TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+  show TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
 
 public export
 cipher_suite_to_id : CipherSuite -> (Bits8, Bits8)
 cipher_suite_to_id TLS_AES_128_GCM_SHA256 = (0x13, 0x01)
+cipher_suite_to_id TLS_AES_256_GCM_SHA384 = (0x13, 0x02)
+-- cipher_suite_to_id TLS_CHACHA20_POLY1305_SHA256 = (0x13, 0x03)
 cipher_suite_to_id TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = (0xc0, 0x2f)
+cipher_suite_to_id TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = (0xc0, 0x30)
 cipher_suite_to_id TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = (0xc0, 0x2b)
+cipher_suite_to_id TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = (0xc0, 0x2c)
 
 public export
 id_to_cipher_suite : (Bits8, Bits8) -> Maybe CipherSuite
 id_to_cipher_suite (0x13, 0x01) = Just TLS_AES_128_GCM_SHA256
+id_to_cipher_suite (0x13, 0x02) = Just TLS_AES_256_GCM_SHA384
+-- id_to_cipher_suite (0x13, 0x03) = Just TLS_CHACHA20_POLY1305_SHA256
 id_to_cipher_suite (0xc0, 0x2f) = Just TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+id_to_cipher_suite (0xc0, 0x30) = Just TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 id_to_cipher_suite (0xc0, 0x2b) = Just TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+id_to_cipher_suite (0xc0, 0x2c) = Just TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 id_to_cipher_suite _ = Nothing
 
 public export
 ciphersuite_to_hash_type : CipherSuite -> (DPair Type Hash)
-ciphersuite_to_hash_type _ = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+-- ciphersuite_to_hash_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair Sha256 %search
+ciphersuite_to_hash_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
 
 public export
 ciphersuite_to_prf_type : CipherSuite -> (DPair Type Hash)
+ciphersuite_to_prf_type TLS_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_prf_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
+ciphersuite_to_prf_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair Sha384 %search
 ciphersuite_to_prf_type _ = MkDPair Sha256 %search
 
 public export
@@ -298,6 +324,16 @@ ciphersuite_to_iv_len _ = 4
 public export
 ciphersuite_to_verify_data_len : CipherSuite -> Nat
 ciphersuite_to_verify_data_len _ = 12
+
+public export
+ciphersuite_to_aead_type : CipherSuite -> (DPair Type AEAD)
+ciphersuite_to_aead_type TLS_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+-- ciphersuite_to_aead_type TLS_CHACHA20_POLY1305_SHA256 = MkDPair ChaCha20_Poly1305 %search
+ciphersuite_to_aead_type TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = MkDPair AES_128_GCM %search
+ciphersuite_to_aead_type TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = MkDPair AES_256_GCM %search
 
 public export
 data TLSVersion : Type where

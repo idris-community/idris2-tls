@@ -128,26 +128,26 @@ record Application2Keys (iv : Nat) (key : Nat) (mac : Nat) where
   client_application_iv  : Vect iv  Bits8
   server_application_iv  : Vect iv  Bits8
 
-hmac_stream : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> Stream Bits8
-hmac_stream algo secret seed =
+hmac_stream : Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
+hmac_stream hwit secret seed =
   stream_concat
   $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
   $ drop 1
   $ iterate (toList . hmac algo secret) seed
 
 public export
-tls12_application_derive : (0 algo : Type) -> Hash algo => (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
+tls12_application_derive : Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->
                            Application2Keys iv key mac
-tls12_application_derive algo iv key mac shared_secret client_random server_random =
+tls12_application_derive hwit iv key mac shared_secret client_random server_random =
   let master_secret =
         trace ("server random: " <+> xxd server_random)
         $ trace ("client random: " <+> xxd client_random)
         $ trace ("shared secret: " <+> xxd shared_secret)
         $ Stream.take 48
-        $ hmac_stream algo shared_secret
+        $ hmac_stream hwit shared_secret
         $ (encode_ascii "master secret") <+> client_random <+> server_random
       secret_material =
-        hmac_stream algo
+        hmac_stream hwit
           (trace ("master secret: " <+> (xxd $ toList master_secret)) (toList master_secret))
           (encode_ascii "key expansion" <+> server_random <+> client_random)
       (client_mac_key, secret_material)         = Misc.splitAt mac secret_material
@@ -166,51 +166,6 @@ tls12_application_derive algo iv key mac shared_secret client_random server_rand
        server_application_iv
 
 public export
-tls12_verify_data : (0 algo : Type) -> Hash algo => (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
+tls12_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
 tls12_verify_data algo n master_secret records_hash =
   take _ $ hmac_stream algo master_secret (encode_ascii "client finished" <+> records_hash)
-
---- TESTS
-
-test_premaster_secret : List Bits8
-test_premaster_secret =
-  [ 0x03, 0x03, 0x24, 0x43, 0x41, 0x41, 0x46, 0xd9, 0xde, 0xda, 0x55, 0x11, 0xb0, 0xb9, 0xa4, 0xd4, 0xcc, 0x42, 0x5a, 0x21, 0x70
-  , 0xaa, 0xb3, 0x30, 0x1f, 0x58, 0x4f, 0xf1, 0xea, 0x1d, 0x4f, 0x58, 0xab, 0x42, 0x8c, 0x9c, 0x30, 0x62, 0x70, 0xe2, 0x15, 0x41
-  , 0x99, 0x1a, 0x39, 0xa7, 0x60, 0x00 ]
-
-test_client_random : List Bits8
-test_client_random =
-  [ 0xdf, 0x2d, 0xbc, 0x93, 0x11, 0xf2, 0xb2, 0x69, 0x2b, 0xcf, 0xf6, 0x04, 0x57, 0x61, 0xbd, 0x35, 0x97, 0x56, 0x0f, 0x3b, 0x84
-  , 0x97, 0x8f, 0x59, 0xe7, 0xf4, 0x56, 0x2d, 0x9e, 0x39, 0x83, 0x66 ]
-
-test_server_random : List Bits8
-test_server_random =
-  [ 0xc4, 0xd8, 0x87, 0xca, 0x6d, 0xd1, 0x53, 0xa3, 0xb3, 0xe0, 0xba, 0xbb, 0x4a, 0x68, 0x50, 0xc7, 0xdc, 0x48, 0xc9, 0x2c, 0x8c
-  , 0x20, 0xa3, 0x82, 0x44, 0x4f, 0x57, 0x4e, 0x47, 0x52, 0x44, 0x01 ]
-
-test_client_random2 : List Bits8
-test_client_random2 = 
-  [ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07
-  , 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
-  , 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17
-  , 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
-  ]
-
-test_server_random2 : List Bits8
-test_server_random2 =
-  [ 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77
-  , 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f
-  , 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87
-  , 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f
-  ]
-
-test_premaster_secret2 : List Bits8
-test_premaster_secret2 =
-  [ 0xdf, 0x4a, 0x29, 0x1b, 0xaa, 0x1e, 0xb7, 0xcf, 0xa6, 0x93, 0x4b, 0x29, 0xb4, 0x74, 0xba, 0xad, 0x26, 0x97, 0xe2, 0x9f, 0x1f
-  , 0x92, 0x0d, 0xcc, 0x77, 0xc8, 0xa0, 0xa0, 0x88, 0x44, 0x76, 0x24 ]
-
-test_master_secret : Vect 48 Bits8
-test_master_secret =
-  Stream.take 48
-  $ hmac_stream Sha256 test_premaster_secret2
-  $ (encode_ascii "master secret") <+> test_client_random2 <+> test_server_random2
