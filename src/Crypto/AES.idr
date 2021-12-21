@@ -157,11 +157,9 @@ mix_columns_mat = [[G2, G1, G1, G3], [G3, G2, G1, G1], [G1, G3, G2, G1], [G1, G1
 inv_mix_columns_mat : Vect 4 (Vect 4 G')
 inv_mix_columns_mat = [[G14, G9, G13, G11], [G11, G14, G9, G13], [G13, G11, G14, G9], [G9, G13, G11, G14]]
 
-||| RotWord
 rot_word : {n : Nat} -> Nat -> Vect (S n) a -> Vect (S n) a
 rot_word k = take (S n) . drop k . cycle
 
-||| InvRotWord
 inv_rot_word : {n : Nat} -> Nat -> Vect (S n) a -> Vect (S n) a
 inv_rot_word k = take (S n) . drop (n * k) . cycle
 
@@ -171,19 +169,15 @@ sub_byte x = index (b8_to_fin x) sbox
 inv_sub_byte : Bits8 -> Bits8
 inv_sub_byte x = index (b8_to_fin x) inv_sbox
 
-||| SubWord
 sub_word : Vect m Bits8 -> Vect m Bits8
 sub_word = map sub_byte
 
-||| InvSubWord
 inv_sub_word : Vect m Bits8 -> Vect m Bits8
 inv_sub_word = map inv_sub_byte
 
-||| SubBytes
 sub_bytes : Vect n (Vect m Bits8) -> Vect n (Vect m Bits8)
 sub_bytes = map sub_word
 
-||| InvSubBytes
 inv_sub_bytes : Vect n (Vect m Bits8) -> Vect n (Vect m Bits8)
 inv_sub_bytes = map inv_sub_word
 
@@ -191,7 +185,6 @@ shift_rows' : {m : _} -> Nat -> Vect n (Vect (S m) Bits8) -> Vect n (Vect (S m) 
 shift_rows' n [] = []
 shift_rows' n (x :: xs) = rot_word n x :: shift_rows' (S n) xs
 
-||| ShiftRows
 shift_rows : {n, m : Nat} -> Vect (S n) (Vect m Bits8) -> Vect (S n) (Vect m Bits8)
 shift_rows = transpose . shift_rows' Z . transpose
 
@@ -199,7 +192,6 @@ inv_shift_rows' : {m : _} -> Nat -> Vect n (Vect (S m) Bits8) -> Vect n (Vect (S
 inv_shift_rows' n [] = []
 inv_shift_rows' n (x :: xs) = inv_rot_word n x :: inv_shift_rows' (S n) xs
 
-||| ShiftRows
 inv_shift_rows : {n, m : Nat} -> Vect (S n) (Vect m Bits8) -> Vect (S n) (Vect m Bits8)
 inv_shift_rows = transpose . inv_shift_rows' Z . transpose
 
@@ -216,14 +208,12 @@ inv_gmod x g =
     G13 => gbox_13
     G14 => gbox_14
 
-||| MixColumns
 mix_columns : Vect n (Vect 4 Bits8) -> Vect n (Vect 4 Bits8)
 mix_columns xs = matmul (\a, b => foldl xor 0 $ zipWith gmod a b) xs mix_columns_mat
 
 inv_mix_columns : Vect n (Vect 4 Bits8) -> Vect n (Vect 4 Bits8)
 inv_mix_columns xs = matmul (\a, b => foldl xor 0 $ zipWith inv_gmod a b) xs inv_mix_columns_mat
 
-||| Rcon
 rcons : Stream Bits8
 rcons = go 1
   where
