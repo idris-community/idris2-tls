@@ -278,3 +278,7 @@ uncons1 lst = (init lst, last lst)
 public export
 splitAt : (n : Nat) -> Stream a -> (Vect n a, Stream a)
 splitAt n s = (take n s, drop n s)
+
+public export
+zeros : {n : Nat} -> Vect n Bits8
+zeros = map (const 0) Fin.range
