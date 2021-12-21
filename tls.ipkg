@@ -15,19 +15,18 @@ brief = "A portable idris2 implementation of TLS"
 
 depends = contrib, network
 
-modules = Crypto.AEAD,
-          Crypto.AES,
+modules = Crypto.AES,
           Crypto.ChaCha,
+          Crypto.GF128,
           Crypto.Curve,
           Crypto.Curve.Weierstrass,
           Crypto.Curve.XCurves,
           Crypto.ECDH,
-          Crypto.GF128,
+          Crypto.Random,
           Crypto.Hash,
           Crypto.Hash.Interfaces,
           Crypto.Hash.SHA2,
           Crypto.RSA,
-          Crypto.Random,
           Crypto.Random.C,
           Crypto.Random.JS,
           Data.Security.DER,
@@ -41,16 +40,22 @@ modules = Crypto.AEAD,
           Network.TLS.Record,
           Network.TLS.Wrapper,
           Network.TLS.HKDF,
+          Network.TLS.Handle,
+          Network.TLS.AEAD,
+          Tests.Crypto,
+          Tests.TLS,
           Utils.Base64,
           Utils.Bytes,
           Utils.Misc,
           Utils.Misc.C,
-          Utils.Network,
+          Utils.Handle,
           Utils.OS,
           Utils.Pair,
           Utils.Parser,
           Utils.Repeatedly,
-          Utils.Show
-
+          Utils.Show,
+          Utils.Network.C,
+          Utils.Handle.C
+    
 opts = "-Wno-shadowing"
 sourcedir = "src"
