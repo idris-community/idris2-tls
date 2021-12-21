@@ -9,8 +9,6 @@ import Data.Vect
 import Utils.Bytes
 import Utils.Misc
 
-import Debug.Trace
-
 public export
 hkdf_extract : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> Vect (digest_nbyte {algo}) Bits8
 hkdf_extract algo salt ikm = hmac algo salt ikm
@@ -140,15 +138,12 @@ tls12_application_derive : Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat)
                            Application2Keys iv key mac
 tls12_application_derive hwit iv key mac shared_secret client_random server_random =
   let master_secret =
-        trace ("server random: " <+> xxd server_random)
-        $ trace ("client random: " <+> xxd client_random)
-        $ trace ("shared secret: " <+> xxd shared_secret)
-        $ Stream.take 48
+        Stream.take 48
         $ hmac_stream hwit shared_secret
         $ (encode_ascii "master secret") <+> client_random <+> server_random
       secret_material =
         hmac_stream hwit
-          (trace ("master secret: " <+> (xxd $ toList master_secret)) (toList master_secret))
+          (toList master_secret)
           (encode_ascii "key expansion" <+> server_random <+> client_random)
       (client_mac_key, secret_material)         = Misc.splitAt mac secret_material
       (server_mac_key, secret_material)         = Misc.splitAt mac secret_material
@@ -160,12 +155,17 @@ tls12_application_derive hwit iv key mac shared_secret client_random server_rand
        master_secret
        client_mac_key
        server_mac_key
-       (trace ("c_ap_k: " <+> (xxd $ toList client_application_key)) $ client_application_key)
+       client_application_key
        server_application_key
-       (trace ("c_ap_iv: " <+> (xxd $ toList client_application_iv)) $ client_application_iv)
+       client_application_iv
        server_application_iv
 
 public export
-tls12_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
-tls12_verify_data algo n master_secret records_hash =
+tls12_client_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
+tls12_client_verify_data algo n master_secret records_hash =
   take _ $ hmac_stream algo master_secret (encode_ascii "client finished" <+> records_hash)
+
+public export
+tls12_server_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
+tls12_server_verify_data algo n master_secret records_hash =
+  take _ $ hmac_stream algo master_secret (encode_ascii "server finished" <+> records_hash)

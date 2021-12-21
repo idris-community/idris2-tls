@@ -6,7 +6,6 @@ module Crypto.Curve.XCurves
 import Data.Bits
 import Data.Bool.Xor
 import Data.Vect
-import Debug.Trace
 import Utils.Bytes
 import Utils.Misc
 

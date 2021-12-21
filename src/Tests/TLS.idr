@@ -105,7 +105,18 @@ tls2_test sock target_hostname state = do
 
   _ <- send_bytes sock handshake_data
 
-  Right b_cert <- read_record sock
+  putStrLn "change cipher spec"
+  Right b_ccs <- read_record sock
+  | Left err => putStrLn err
+
+  let Right state = serverhellodone_to_applicationready2 state b_ccs
+  | Left err => putStrLn err
+
+  putStrLn "server finished"
+  Right b_fin <- read_record sock
+  | Left err => putStrLn err
+
+  let Right state = applicationready2_to_application2 state b_fin
   | Left err => putStrLn err
 
   putStrLn "ok tls/1.2"
