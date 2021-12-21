@@ -10,21 +10,19 @@ import Crypto.AES
 import Crypto.GF128
 import Crypto.ChaCha
 
-import Debug.Trace
-
 public export
 interface AEAD (0 a : Type) where
   ||| IV generated during key exchange
-  iv_bytes : Nat
-  key_bytes : Nat
-  mac_bytes : Nat
-  mac_key_bytes : Nat
+  fixed_iv_length : Nat
+  enc_key_length : Nat
+  mac_length : Nat
+  mac_key_length : Nat
   ||| Part of IV that is sent along with the ciphertext, should always be 0 in TLS 1.3
-  explicit_iv_bytes : Nat
+  record_iv_length : Nat
 
-  encrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 -> Vect mac_key_bytes Bits8 -> Nat ->
-            (plaintext : List Bits8) -> (aad : List Bits8) -> (Vect explicit_iv_bytes Bits8, List Bits8, Vect mac_bytes Bits8)
-  decrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 -> Vect explicit_iv_bytes Bits8 -> Vect mac_key_bytes Bits8 -> Nat ->
+  encrypt : Vect enc_key_length Bits8 -> Vect fixed_iv_length Bits8 -> Vect mac_key_length Bits8 -> Nat ->
+            (plaintext : List Bits8) -> (aad : List Bits8) -> (Vect record_iv_length Bits8, List Bits8, Vect mac_length Bits8)
+  decrypt : Vect enc_key_length Bits8 -> Vect fixed_iv_length Bits8 -> Vect record_iv_length Bits8 -> Vect mac_key_length Bits8 -> Nat ->
             (ciphertext : List Bits8) -> (plaintext_to_aad : List Bits8 -> List Bits8) -> (mac_tag : List Bits8) -> (List Bits8, Bool)
 
 aes_pad_iv_block : {iv : Nat} -> Vect iv Bits8 -> Stream (Vect (iv+4) Bits8)
@@ -70,11 +68,11 @@ data TLS13_AES_128_GCM : Type where
 
 public export
 AEAD TLS13_AES_128_GCM where
-  iv_bytes = 12
-  key_bytes = 16
-  mac_bytes = 16
-  mac_key_bytes = 0
-  explicit_iv_bytes = 0
+  fixed_iv_length = 12
+  enc_key_length = 16
+  mac_length = 16
+  mac_key_length = 0
+  record_iv_length = 0
 
   encrypt key iv mac_key seq_no plaintext aad =
     let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
@@ -93,11 +91,11 @@ data TLS12_AES_128_GCM : Type where
 
 public export
 AEAD TLS12_AES_128_GCM where
-  iv_bytes = 4
-  key_bytes = 16
-  mac_bytes = 16
-  mac_key_bytes = 0
-  explicit_iv_bytes = 8
+  fixed_iv_length = 4
+  enc_key_length = 16
+  mac_length = 16
+  mac_key_length = 0
+  record_iv_length = 8
 
   encrypt key iv mac_key seq_no plaintext aad =
     let explicit_iv = to_be {n=8} $ cast {to=Bits64} seq_no
@@ -117,11 +115,11 @@ data TLS13_AES_256_GCM : Type where
 
 public export
 AEAD TLS13_AES_256_GCM where
-  iv_bytes = 12
-  key_bytes = 32
-  mac_bytes = 16
-  mac_key_bytes = 0
-  explicit_iv_bytes = 0
+  fixed_iv_length = 12
+  enc_key_length = 32
+  mac_length = 16
+  mac_key_length = 0
+  record_iv_length = 0
 
   encrypt key iv mac_key seq_no plaintext aad =
     let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
@@ -140,11 +138,11 @@ data TLS12_AES_256_GCM : Type where
 
 public export
 AEAD TLS12_AES_256_GCM where
-  iv_bytes = 4
-  key_bytes = 32
-  mac_bytes = 16
-  mac_key_bytes = 0
-  explicit_iv_bytes = 8
+  fixed_iv_length = 4
+  enc_key_length = 32
+  mac_length = 16
+  mac_key_length = 0
+  record_iv_length = 8
 
   encrypt key iv mac_key seq_no plaintext aad =
     let explicit_iv = to_be {n=8} $ cast {to=Bits64} seq_no
@@ -178,11 +176,11 @@ data TLS1213_ChaCha20_Poly1305 : Type where
 
 public export
 AEAD TLS1213_ChaCha20_Poly1305 where
-  iv_bytes = 12
-  key_bytes = 32
-  mac_bytes = 16
-  mac_key_bytes = 0
-  explicit_iv_bytes = 0
+  fixed_iv_length = 12
+  enc_key_length = 32
+  mac_length = 16
+  mac_key_length = 0
+  record_iv_length = 0
 
   encrypt key iv [] seq_no plaintext aad =
     let k' = from_le {n=4} <$> group 8 4 key

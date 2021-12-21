@@ -82,11 +82,11 @@ record TLSClientHelloState where
 export
 data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
   MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h ->
-                           HandshakeKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
+                           HandshakeKeys (fixed_iv_length {a=a}) (enc_key_length {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
 
 export
 data TLS3ApplicationState : (aead : Type) -> AEAD aead -> Type where
-  MkTLS3ApplicationState : (a' : AEAD a) -> ApplicationKeys (iv_bytes {a=a}) (key_bytes {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a'
+  MkTLS3ApplicationState : (a' : AEAD a) -> ApplicationKeys (fixed_iv_length {a=a}) (enc_key_length {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a'
 
 export
 record TLS2ServerHelloState algo where
@@ -111,7 +111,7 @@ record TLS2ServerCertificateState algo where
 export
 data TLS2ServerKEXState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
   MkTLS2ServerKEXState : (a' : AEAD a) -> (h' : Hash h) -> h -> Nat -> List Bits8 ->
-                         (Application2Keys (iv_bytes @{a'}) (key_bytes @{a'}) (mac_key_bytes @{a'})) ->
+                         (Application2Keys (fixed_iv_length @{a'}) (enc_key_length @{a'}) (mac_key_length @{a'})) ->
                          TLS2ServerKEXState a a' h h'
 
 export
@@ -126,7 +126,7 @@ record TLS2AppReadyState a b c d where
 
 export
 data TLS2ApplicationState : (aead : Type) -> AEAD aead -> Type where
-  MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (iv_bytes {a=a}) (key_bytes {a=a}) (mac_key_bytes @{a'}) -> Nat -> Nat -> 
+  MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (fixed_iv_length {a=a}) (enc_key_length {a=a}) (mac_key_length @{a'}) -> Nat -> Nat -> 
                            TLS2ApplicationState a a'
 
 public export
@@ -215,7 +215,7 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
       (group, pk) <- get_server_handshake_key server_hello
       shared_secret <- maybe_to_either (key_exchange group pk $ toList state.dh_keys) "server sent invalid key"
       let (aead ** awit) = ciphersuite_to_aead_type server_hello.cipher_suite
-      let hk = tls13_handshake_derive hash_algo (iv_bytes {a=aead}) (key_bytes {a=aead}) shared_secret $ toList $ finalize digest_state
+      let hk = tls13_handshake_derive hash_algo (fixed_iv_length {a=aead}) (enc_key_length {a=aead}) shared_secret $ toList $ finalize digest_state
       Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState awit hwit digest_state hk Z
     TLS12 =>
       let (hash_algo ** hwit) = ciphersuite_to_prf_type server_hello.cipher_suite
@@ -226,7 +226,7 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
          $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite state.dh_keys hwit digest_state
     tlsvr => Left $ "unsupported version: " <+> show tlsvr
 
-decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_bytes @{aead'}) -> List Bits8 ->
+decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ServerHelloState aead aead' algo algo', List Bits8)
 decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' digest_state hk counter) (MkWrapper ciphertext mac_tag) record_header =
   case decrypt @{a'} hk.server_handshake_key hk.server_handshake_iv zeros zeros counter ciphertext (const record_header) $ toList mac_tag of
@@ -266,7 +266,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
                  $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)}
                  $ Finished
                  $ MkFinished client_verify_data)
-               record_length = (length client_handshake_finished) + mac_bytes @{a'}
+               record_length = (length client_handshake_finished) + mac_length @{a'}
                b_record = record_type_with_version_with_length.encode {i = List (Posed Bits8)} (ApplicationData, TLS12, record_length)
                (eiv, chf_encrypted, chf_mac_tag) =
                  encrypt @{a'} hk.client_handshake_key hk.client_handshake_iv zeros Z client_handshake_finished b_record
@@ -288,7 +288,7 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | Right (MkDPair _ (ChangeCipherSpec _)) => pure $ Left og
   | Left err => throwE err
   | _ => throwE $ "Parsing error: record not application data"
-  let Just wrapper = from_application_data {mac_size = (mac_bytes @{a'})} application_data
+  let Just wrapper = from_application_data {mac_size = (mac_length @{a'})} application_data
   | Nothing => throwE $ "malformed wrapper:" <+> xxd application_data
   let Just (server_hello, plaintext') = decrypt_hs_s_wrapper server_hello wrapper (take 5 b_wrapper)
   | Nothing => throwE "cannot decrypt wrapper"
@@ -298,7 +298,7 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | Nothing => throwE "plaintext is empty"
   tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
 
-decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_bytes @{aead'}) -> List Bits8 ->
+decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ApplicationState aead aead', List Bits8)
 decrypt_ap_s_wrapper (MkTLS3ApplicationState a' ak c_counter s_counter) (MkWrapper ciphertext mac_tag) record_header =
   case decrypt @{a'} ak.server_application_key ak.server_application_iv zeros zeros s_counter ciphertext (const record_header) $ toList mac_tag of
@@ -310,7 +310,7 @@ decrypt_from_record : TLSState Application3 -> List Bits8 -> Either String (TLSS
 decrypt_from_record og@(TLS3_Application app_state@(MkTLS3ApplicationState a' ak c_counter s_counter)) b_wrapper = do
   (MkDPair _ (ApplicationData application_data)) <- parse_record b_wrapper alert_or_arecord
   | _ => Left $ "Parsing error: record not application data"
-  let Just wrapper = from_application_data {mac_size = (mac_bytes @{a'})} application_data
+  let Just wrapper = from_application_data {mac_size = (mac_length @{a'})} application_data
   | Nothing => Left $ "malformed wrapper:" <+> xxd application_data
   let Just (app_state, plaintext') = decrypt_ap_s_wrapper app_state wrapper (take 5 b_wrapper)
   | Nothing => Left "cannot decrypt wrapper"
@@ -325,7 +325,7 @@ public export
 encrypt_to_record : TLSState Application3 -> List Bits8 -> (TLSState Application3, List Bits8)
 encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_counter) plaintext =
   let b_application_data = to_application_data $ MkWrappedRecord ApplicationData plaintext
-      record_length = (length b_application_data) + mac_bytes @{a'}
+      record_length = (length b_application_data) + mac_length @{a'}
       b_record_header = (record_type_with_version_with_length {i = List (Posed Bits8)}).encode (ApplicationData, TLS12, record_length)
       (eiv, app_encrypted, app_mac_tag) =
         encrypt @{a'} ak.client_application_key ak.client_application_iv zeros c_counter b_application_data b_record_header
@@ -359,9 +359,9 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
   let (aead ** awit) = ciphersuite_to_aead_type server_cert.cipher_suite
   let app_key =
         tls12_application_derive server_cert.digest_wit
-          (iv_bytes {a=aead})
-          (key_bytes {a=aead})
-          (mac_key_bytes {a=aead})
+          (fixed_iv_length {a=aead})
+          (enc_key_length {a=aead})
+          (mac_key_length {a=aead})
           shared_secret
           (toList server_cert.server_hello.client_random)
           (toList server_cert.server_hello.server_random)
@@ -377,7 +377,7 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
             chosen_pk 
             app_key
 
-encrypt_to_wrapper2 : AEAD a => Vect (key_bytes {a=a}) Bits8 -> Vect (iv_bytes {a=a}) Bits8 -> Vect (mac_key_bytes {a=a}) Bits8 ->
+encrypt_to_wrapper2 : AEAD a => Vect (enc_key_length {a=a}) Bits8 -> Vect (fixed_iv_length {a=a}) Bits8 -> Vect (mac_key_length {a=a}) Bits8 ->
                       List Bits8 -> RecordType -> Nat -> List Bits8
 encrypt_to_wrapper2 key iv mac_key plaintext record_id sequence =
   let aad = 
@@ -418,7 +418,7 @@ serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changeciphersp
   | _ => Left $ "Parsing error: record not ChangeCipherSpec"
   pure $ TLS2_AppReady $ MkTLS2AppReadyState state.kex_state
 
-parse_tls12_wrapper : AEAD a => RecordType -> List Bits8 -> Either String (Wrapper2 (explicit_iv_bytes {a=a}) (mac_bytes {a=a}))
+parse_tls12_wrapper : AEAD a => RecordType -> List Bits8 -> Either String (Wrapper2 (record_iv_length {a=a}) (mac_length {a=a}))
 parse_tls12_wrapper recordtype b_input = do
   let (Pure [] (recordtype', TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_input) (wrapper2 {i = List (Posed Bits8)}).decode
   | (Pure [] (_, tlsver, _)) => Left $ "Unsupported TLS version: " <+> show tlsver
@@ -432,10 +432,10 @@ parse_tls12_wrapper recordtype b_input = do
 decrypt_from_wrapper2 : AEAD a =>
                         Nat ->
                         RecordType ->
-                        Wrapper2 (explicit_iv_bytes {a=a}) (mac_bytes {a=a}) ->
-                        Vect (iv_bytes {a=a}) Bits8 ->
-                        Vect (key_bytes {a=a}) Bits8 ->
-                        Vect (mac_key_bytes {a=a}) Bits8 ->
+                        Wrapper2 (record_iv_length {a=a}) (mac_length {a=a}) ->
+                        Vect (fixed_iv_length {a=a}) Bits8 ->
+                        Vect (enc_key_length {a=a}) Bits8 ->
+                        Vect (mac_key_length {a=a}) Bits8 ->
                         Either String (List Bits8)
 decrypt_from_wrapper2 sequence record_type wrapper iv key mac_key =
   let aadf = (\plaintext =>
