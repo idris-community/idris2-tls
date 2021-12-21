@@ -100,7 +100,7 @@ tls2_test sock target_hostname state = do
   | Left err => putStrLn err
 
   putStrLn "server hello done"
-  let Right (handshake_data, state) = serverkex_process_serverhellodone state b_s_hello_done
+  let Right (state, handshake_data) = serverkex_process_serverhellodone state b_s_hello_done
   | Left err => putStrLn err
 
   _ <- send_bytes sock handshake_data
@@ -119,45 +119,25 @@ tls2_test sock target_hostname state = do
   let Right state = applicationready2_to_application2 state b_fin
   | Left err => putStrLn err
 
+  putStrLn "sending application data"
+  let (state, wrapper) = encrypt_to_record2 state (encode_ascii $ test_http_body target_hostname)
+  _ <- send_bytes sock wrapper
+
+  Right b_response <- read_record sock
+  | Left err => putStrLn err
+
+  let Right (state, plaintext) = decrypt_from_record2 state b_response
+  | Left err => putStrLn err
+
+  putStrLn $ "vvvvvvv http response vvvvvvvv"
+  putStrLn $ xxd plaintext
+  putStrLn $ show $ utf8_decode plaintext
+
   putStrLn "ok tls/1.2"
 
-tls_test : HasIO m => (target_hostname : String) -> Int -> m ()
-tls_test target_hostname port = do
-  Right sock <- socket AF_INET Stream 0
-  | Left err => putStrLn $ "unable to create socket: " <+> show err
-
-  putStrLn "genreating keys"
-  keys <- traverse gen_key (X25519 ::: [ SECP256r1 ])
-  random <- random_bytes _
-  putStrLn "done"
-
-  let
-    init_state =
-      MkTLSInitialState
-        target_hostname
-        random
-        []
-        (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ])
-        (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
-        keys
-
-  putStrLn $ "connecting to " <+> target_hostname
-  0 <- connect sock (Hostname target_hostname) port
-  | _ => putStrLn $ "unable to connect"
-  putStrLn $ "connected"
-
-  let (client_hello, state) = tls_init_to_clienthello $ TLS_Init init_state
-  _ <- send_bytes sock client_hello
-
-  Right b_server_hello <- read_record sock
-  | Left err => putStrLn err
-
-  putStrLn "server_hello:"
-  putStrLn $ xxd b_server_hello
-
-  let Right (Right state) = tls_clienthello_to_serverhello state b_server_hello
-  | Right (Left state) => tls2_test sock target_hostname state
-  | Left err => putStrLn err
+tls3_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello3 -> m ()
+tls3_test sock target_hostname state = do
+  putStrLn "tls/1.3 detected"
 
   putStrLn "perform handshake"
   Right state <- handshake sock state
@@ -201,3 +181,42 @@ tls_test target_hostname port = do
   putStrLn $ show $ utf8_decode plaintext
 
   putStrLn "ok tls/1.3"
+
+tls_test : HasIO m => (target_hostname : String) -> Int -> m ()
+tls_test target_hostname port = do
+  Right sock <- socket AF_INET Stream 0
+  | Left err => putStrLn $ "unable to create socket: " <+> show err
+
+  putStrLn "genreating keys"
+  keys <- traverse gen_key (X25519 ::: [ SECP256r1 ])
+  random <- random_bytes _
+  putStrLn "done"
+
+  let
+    init_state =
+      MkTLSInitialState
+        target_hostname
+        random
+        []
+        (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ])
+        (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
+        keys
+
+  putStrLn $ "connecting to " <+> target_hostname
+  0 <- connect sock (Hostname target_hostname) port
+  | _ => putStrLn $ "unable to connect"
+  putStrLn $ "connected"
+
+  let (client_hello, state) = tls_init_to_clienthello $ TLS_Init init_state
+  _ <- send_bytes sock client_hello
+
+  Right b_server_hello <- read_record sock
+  | Left err => putStrLn err
+
+  putStrLn "server_hello:"
+  putStrLn $ xxd b_server_hello
+
+  case tls_clienthello_to_serverhello state b_server_hello of
+    Right (Right state) => tls3_test sock target_hostname state
+    Right (Left state) => tls2_test sock target_hostname state
+    Left err => putStrLn err
