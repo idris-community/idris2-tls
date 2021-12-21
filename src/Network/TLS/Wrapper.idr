@@ -29,22 +29,23 @@ from_application_data xs =
     No contra => Nothing
 
 public export
-record Wrapper2 (mac_size : Nat) where
+record Wrapper2 (iv_size : Nat) (mac_size : Nat) where
   constructor MkWrapper2
-  iv_data : List Bits8
+  iv_data : Vect iv_size Bits8
   encrypted_data : List Bits8
   auth_tag : Vect mac_size Bits8
 
 public export
-to_application_data2 : Wrapper2 mac_size -> List Bits8
-to_application_data2 x = x.iv_data <+> x.encrypted_data <+> toList x.auth_tag
+to_application_data2 : Wrapper2 iv_size mac_size -> List Bits8
+to_application_data2 x = toList x.iv_data <+> x.encrypted_data <+> toList x.auth_tag
 
 public export
-from_application_data2 : {mac_size : _} -> (iv_size : Nat) -> (application_data : List Bits8) -> Maybe (Wrapper2 mac_size)
-from_application_data2 iv_size xs = do
+from_application_data2 : {iv_size : _} -> {mac_size : _} -> (application_data : List Bits8) -> Maybe (Wrapper2 iv_size mac_size)
+from_application_data2 xs = do
   let (iv, ciphertext) = splitAt iv_size xs
+  iv' <- exactLength iv_size $ fromList iv
   w <- from_application_data ciphertext
-  pure $ MkWrapper2 (toList iv) w.encrypted_data w.auth_tag
+  pure $ MkWrapper2 iv' w.encrypted_data w.auth_tag
 
 namespace WrappedRecord
   public export
