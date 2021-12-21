@@ -12,25 +12,18 @@ import Crypto.ChaCha
 
 public export
 interface AEAD (0 a : Type) where
+  ||| IV generated during key exchange
   iv_bytes : Nat
   key_bytes : Nat
   mac_bytes : Nat
+  mac_key_bytes : Nat
+  ||| Part of IV that is sent along with the ciphertext, should always be 0 in TLS 1.3
+  explicit_iv_bytes : Nat
 
-  encrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 ->
-            (plaintext : List Bits8) -> (aad : List Bits8) -> (List Bits8, Vect mac_bytes Bits8)
-  decrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 ->
+  encrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 -> Vect mac_key_bytes Bits8 -> Nat ->
+            (plaintext : List Bits8) -> (aad : List Bits8) -> (Vect explicit_iv_bytes Bits8, List Bits8, Vect mac_bytes Bits8)
+  decrypt : Vect key_bytes Bits8 -> Vect iv_bytes Bits8 -> Vect explicit_iv_bytes Bits8 -> Vect mac_key_bytes Bits8 -> Nat ->
             (ciphertext : List Bits8) -> (plaintext_to_aad : List Bits8 -> List Bits8) -> (mac_tag : List Bits8) -> (List Bits8, Bool)
-
-  tls12_iv_bytes : Nat
-  tls12_explicit_iv_bytes : Nat
-  tls12_derive_iv : (sequence : Nat) -> (tls12_iv : Vect tls12_iv_bytes Bits8) -> (Vect tls12_explicit_iv_bytes Bits8, Vect iv_bytes Bits8)
-  tls12_derive_iv' : (tls12_iv : Vect tls12_iv_bytes Bits8) -> (Vect tls12_explicit_iv_bytes Bits8) -> Vect iv_bytes Bits8
-
-public export
-decrypt_with_aad : AEAD a => Vect (key_bytes {a=a}) Bits8 -> Vect (iv_bytes {a=a}) Bits8 ->
-                   (ciphertext : List Bits8) -> (aad : List Bits8) -> (mac_tag : List Bits8) -> (List Bits8, Bool)
-decrypt_with_aad key iv ciphertext aad mac_tag = decrypt {a} key iv ciphertext (const aad) mac_tag
-
 
 aes_pad_iv_block : {iv : Nat} -> Vect iv Bits8 -> Stream (Vect (iv+4) Bits8)
 aes_pad_iv_block iv = map ((iv ++) . to_be . (cast {to=Bits32})) $ drop 2 nats
@@ -71,57 +64,99 @@ aes_gcm_create_aad mode key iv aad ciphertext =
   in zipWith xor j0 output
 
 public export
-data AES_128_GCM : Type where
+data TLS13_AES_128_GCM : Type where
 
 public export
-AEAD AES_128_GCM where
+AEAD TLS13_AES_128_GCM where
   iv_bytes = 12
   key_bytes = 16
   mac_bytes = 16
+  mac_key_bytes = 0
+  explicit_iv_bytes = 0
 
-  encrypt key iv plaintext aad =
-    let ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES128 key iv)
-        mac_tag = aes_gcm_create_aad AES128 key iv aad ciphertext
-    in (ciphertext, mac_tag)
+  encrypt key iv mac_key seq_no plaintext aad =
+    let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES128 key iv')
+        mac_tag = aes_gcm_create_aad AES128 key iv' aad ciphertext
+    in ([], ciphertext, mac_tag)
 
-  decrypt key iv ciphertext aadf mac_tag' =
-    let plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES128 key iv)
-        mac_tag = aes_gcm_create_aad AES128 key iv (aadf plaintext) ciphertext
+  decrypt key iv [] mac_key seq_no ciphertext aadf mac_tag' =
+    let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES128 key iv')
+        mac_tag = aes_gcm_create_aad AES128 key iv' (aadf plaintext) ciphertext
     in (plaintext, s_eq' (toList mac_tag) mac_tag')
-    
-  tls12_iv_bytes = 4
-  tls12_explicit_iv_bytes = 8
-  tls12_derive_iv sequence iv =
-    let eiv = integer_to_be 8 $ cast sequence
-    in (eiv, iv ++ eiv)
-  tls12_derive_iv' = (++)
-
--- TODO: fix and test them
-public export
-data AES_256_GCM : Type where
 
 public export
-AEAD AES_256_GCM where
+data TLS12_AES_128_GCM : Type where
+
+public export
+AEAD TLS12_AES_128_GCM where
+  iv_bytes = 4
+  key_bytes = 16
+  mac_bytes = 16
+  mac_key_bytes = 0
+  explicit_iv_bytes = 8
+
+  encrypt key iv mac_key seq_no plaintext aad =
+    let explicit_iv = to_be {n=8} $ cast {to=Bits64} seq_no
+        iv' = iv ++ explicit_iv
+        ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES128 key iv')
+        mac_tag = aes_gcm_create_aad AES128 key iv' aad ciphertext
+    in (explicit_iv, ciphertext, mac_tag)
+
+  decrypt key iv explicit_iv mac_key seq_no ciphertext aadf mac_tag' =
+    let iv' = iv ++ explicit_iv
+        plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES128 key iv')
+        mac_tag = aes_gcm_create_aad AES128 key iv' (aadf plaintext) ciphertext
+    in (plaintext, s_eq' (toList mac_tag) mac_tag')
+
+public export
+data TLS13_AES_256_GCM : Type where
+
+public export
+AEAD TLS13_AES_256_GCM where
   iv_bytes = 12
   key_bytes = 32
   mac_bytes = 16
+  mac_key_bytes = 0
+  explicit_iv_bytes = 0
 
-  encrypt key iv plaintext aad =
-    let ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES256 key iv)
-        mac_tag = aes_gcm_create_aad AES256 key iv aad ciphertext
-    in (ciphertext, mac_tag)
+  encrypt key iv mac_key seq_no plaintext aad =
+    let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES256 key iv')
+        mac_tag = aes_gcm_create_aad AES256 key iv' aad ciphertext
+    in ([], ciphertext, mac_tag)
 
-  decrypt key iv ciphertext aadf mac_tag' =
-    let plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES256 key iv)
-        mac_tag = aes_gcm_create_aad AES256 key iv (aadf plaintext) ciphertext
+  decrypt key iv [] mac_key seq_no ciphertext aadf mac_tag' =
+    let iv' = zipWith xor iv $ integer_to_be _ $ natToInteger seq_no
+        plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES256 key iv')
+        mac_tag = aes_gcm_create_aad AES256 key iv' (aadf plaintext) ciphertext
     in (plaintext, s_eq' (toList mac_tag) mac_tag')
 
-  tls12_iv_bytes = 4
-  tls12_explicit_iv_bytes = 8
-  tls12_derive_iv sequence iv =
-    let eiv = integer_to_be 8 $ cast sequence
-    in (eiv, iv ++ eiv)
-  tls12_derive_iv' = (++)
+public export
+data TLS12_AES_256_GCM : Type where
+
+public export
+AEAD TLS12_AES_256_GCM where
+  iv_bytes = 4
+  key_bytes = 32
+  mac_bytes = 16
+  mac_key_bytes = 0
+  explicit_iv_bytes = 8
+
+  encrypt key iv mac_key seq_no plaintext aad =
+    let explicit_iv = to_be {n=8} $ cast {to=Bits64} seq_no
+        iv' = iv ++ explicit_iv
+        ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES256 key iv')
+        mac_tag = aes_gcm_create_aad AES256 key iv' aad ciphertext
+    in (explicit_iv, ciphertext, mac_tag)
+
+  decrypt key iv explicit_iv mac_key seq_no ciphertext aadf mac_tag' =
+    let iv' = iv ++ explicit_iv
+        plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES256 key iv')
+        mac_tag = aes_gcm_create_aad AES256 key iv' (aadf plaintext) ciphertext
+    in (plaintext, s_eq' (toList mac_tag) mac_tag')
+
 
 {-
 public export
