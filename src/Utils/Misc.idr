@@ -11,6 +11,10 @@ import Data.List1
 import Syntax.WithProof
 
 public export
+subset_to_fin : {a : _} -> Subset Nat (`LT` a) -> Fin a
+subset_to_fin (Element x wit) = natToFinLT x {prf = wit}
+
+public export
 pair_to_list : (a, a) -> List a
 pair_to_list (x1, x2) = [x1, x2]
 
@@ -162,13 +166,13 @@ forM n f = for (the (Vect n (Fin n)) range) (const f)
 utf8_bytelen : Bits8 -> Maybe (Bits8, Nat)
 utf8_bytelen x =
   if (x .&. 0b01111111) == x then Just (x, 0) -- ascii
-    else if (shiftR x $ Element 5 $ lteAddRight _) == 0b110   then Just (x .&. 0b0011111, 1)
-    else if (shiftR x $ Element 4 $ lteAddRight _) == 0b1110  then Just (x .&. 0b0001111, 2)
-    else if (shiftR x $ Element 3 $ lteAddRight _) == 0b11110 then Just (x .&. 0b0000111, 3)
+    else if (shiftR x 5) == 0b110   then Just (x .&. 0b0011111, 1)
+    else if (shiftR x 4) == 0b1110  then Just (x .&. 0b0001111, 2)
+    else if (shiftR x 3) == 0b11110 then Just (x .&. 0b0000111, 3)
     else Nothing
 
 utf8_unmask : Bits8 -> Maybe Bits8
-utf8_unmask x = const (x .&. 0b00111111) <$> guard ((shiftR x $ Element 6 $ lteAddRight _) == 0b10)
+utf8_unmask x = const (x .&. 0b00111111) <$> guard (shiftR x 6 == 0b10)
 
 utf8_pushbits : Integer -> List Bits8 -> Integer
 utf8_pushbits acc [] = acc
