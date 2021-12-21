@@ -204,7 +204,7 @@ inv_shift_rows = transpose . inv_shift_rows' Z . transpose
 
 gmod : Bits8 -> G -> Bits8
 gmod x G1 = x
-gmod x G2 = (if x < 128 then id else (xor 0x1b)) $ shiftL x (Element 1 $ LTESucc $ LTESucc $ LTEZero)
+gmod x G2 = (if x < 128 then id else (xor 0x1b)) $ shiftL x 1
 gmod x G3 = xor (gmod x G2) x
 
 inv_gmod : Bits8 -> G' -> Bits8

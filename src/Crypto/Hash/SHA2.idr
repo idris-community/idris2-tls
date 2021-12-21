@@ -135,8 +135,8 @@ sha256_extend_message xs = prepend (toList xs) $ go xs
   go xs =
     let
       [wi_16, wi_15, wi_7, wi_2] = the (Vect 4 _) $ map (flip index xs) [0, 1, 9, 14]
-      s0 = rotate_right 7  wi_15 `xor` rotate_right 18 wi_15 `xor` shiftR wi_15 (Element 3  $ lteAddRight _)
-      s1 = rotate_right 17 wi_2 ` xor` rotate_right 19 wi_2  `xor` shiftR wi_2  (Element 10 $ lteAddRight _)
+      s0 = rotate_right 7  wi_15 `xor` rotate_right 18 wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 3  $ lteAddRight _)
+      s1 = rotate_right 17 wi_2 ` xor` rotate_right 19 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 10 $ lteAddRight _)
       w = wi_16 + s0 + wi_7 + s1
     in
       w :: go (tail xs `snoc` w)
@@ -225,8 +225,8 @@ sha512_extend_message xs = prepend (toList xs) $ go xs
   go xs =
     let
       [wi_16, wi_15, wi_7, wi_2] = the (Vect 4 _) $ map (flip index xs) [0, 1, 9, 14]
-      s0 = rotate_right 1  wi_15 `xor` rotate_right 8  wi_15 `xor` shiftR wi_15 (Element 7 $ lteAddRight _)
-      s1 = rotate_right 19 wi_2  `xor` rotate_right 61 wi_2  `xor` shiftR wi_2  (Element 6 $ lteAddRight _)
+      s0 = rotate_right 1  wi_15 `xor` rotate_right 8  wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 7 $ lteAddRight _)
+      s1 = rotate_right 19 wi_2  `xor` rotate_right 61 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 6 $ lteAddRight _)
       w = wi_16 + s0 + wi_7 + s1
     in
       w :: go (tail xs `snoc` w)

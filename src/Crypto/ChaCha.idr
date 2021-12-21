@@ -7,6 +7,7 @@ import Data.Fin
 import Data.Nat.Order.Properties
 import Data.Vect
 import Utils.Bytes
+import Utils.Misc
 
 public export
 Key : Type
@@ -30,9 +31,9 @@ mk_state : (counter : Bits32) -> Key -> Nonce -> ChaChaState
 mk_state counter key nonce = constants ++ key ++ [counter] ++ nonce
 
 public export
-rotl : Index {a = Bits32} -> Bits32 -> Bits32
+rotl : Subset Nat (`LT` 32) -> Bits32 -> Bits32
 rotl b'@(Element Z p) a = a
-rotl b'@(Element (S b) p) a = shiftL a b' .|. shiftR a (Element (minus 31 b) $ LTESucc (minusLTE b 31))
+rotl b'@(Element (S b) p) a = shiftL a (subset_to_fin b') .|. shiftR a (subset_to_fin $ Element (minus 31 b) $ LTESucc (minusLTE b 31))
 
 public export
 quarter_rotate : Fin 16 -> Fin 16 -> Fin 16 -> Fin 16 -> State ChaChaState ()

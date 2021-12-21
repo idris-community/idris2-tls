@@ -65,26 +65,12 @@ rms m s x = (shiftL (x .&. m) s) .|. ((shiftR x s) .&. m)
 rev64 : Bits64 -> Bits64
 rev64 x =
   let x' =
-      (rms 0x0000FFFF0000FFFF (Element 16 $ lteAddRight _)) $
-      (rms 0x00FF00FF00FF00FF (Element 8  $ lteAddRight _)) $
-      (rms 0x0F0F0F0F0F0F0F0F (Element 4  $ lteAddRight _)) $
-      (rms 0x3333333333333333 (Element 2  $ lteAddRight _)) $
-      (rms 0x5555555555555555 (Element 1  $ lteAddRight _)) x
-  in (shiftL x' $ Element 32 $ lteAddRight _) .|. (shiftR x' $ Element 32 $ lteAddRight _)
-
--- Take the indexes out or it will take forever to compile gmult_core
-i1 : Index {a=Bits64}
-i1  = Element 1 $ lteAddRight _
-i2 : Index {a=Bits64}
-i2  = Element 2 $ lteAddRight _
-i7 : Index {a=Bits64}
-i7  = Element 7 $ lteAddRight _
-i63 : Index {a=Bits64}
-i63 = Element 63 $ lteAddRight _
-i62 : Index {a=Bits64}
-i62 = Element 62 $ lteAddRight _
-i57 : Index {a=Bits64}
-i57 = Element 57 $ lteAddRight _
+      (rms 0x0000FFFF0000FFFF 16) $
+      (rms 0x00FF00FF00FF00FF 8 ) $
+      (rms 0x0F0F0F0F0F0F0F0F 4 ) $
+      (rms 0x3333333333333333 2 ) $
+      (rms 0x5555555555555555 1 ) x
+  in (shiftL x' 32) .|. (shiftR x' 32)
 
 gmult_core : Bits64 -> Bits64 -> HValues -> (Bits64, Bits64)
 gmult_core y1 y0 (h0, h0r, h1, h1r, h2, h2r) =
@@ -106,24 +92,24 @@ gmult_core y1 y0 (h0, h0r, h1, h1r, h2, h2r) =
       z2h = bmul y2r h2r
       z2  = xor (xor z0 z1) z2
       z2h = xor (xor z0h z1h) z2h
-      z0h = shiftR (rev64 z0h) i1
-      z1h = shiftR (rev64 z1h) i1
-      z2h = shiftR (rev64 z2h) i1
+      z0h = shiftR (rev64 z0h) 1
+      z1h = shiftR (rev64 z1h) 1
+      z2h = shiftR (rev64 z2h) 1
       -- Since the operation is done in big-endian, but GHASH spec
       -- needs small endian, we flip the bits
       v0 = z0
       v1 = xor z0h z2
       v2 = xor z1 z2h
       v3 = z1h
-      v3 = (shiftL v3 i1) .|. (shiftR v2 i63)
-      v2 = (shiftL v2 i1) .|. (shiftR v1 i63)
-      v1 = (shiftL v1 i1) .|. (shiftR v0 i63)
-      v0 = (shiftL v0 i1)
+      v3 = (shiftL v3 1) .|. (shiftR v2 63)
+      v2 = (shiftL v2 1) .|. (shiftR v1 63)
+      v1 = (shiftL v1 1) .|. (shiftR v0 63)
+      v0 = (shiftL v0 1)
       -- Modular reduction to GF[128]
-      v2 = v2 `xor` v0              `xor` (shiftR v0 i1)  `xor` (shiftR v0 i2) `xor` (shiftR v0 i7)
-      v1 = v1 `xor` (shiftL v0 i63) `xor` (shiftL v0 i62) `xor` (shiftL v0 i57)
-      v3 = v3 `xor` v1              `xor` (shiftR v1 i1)  `xor` (shiftR v1 i2) `xor` (shiftR v1 i7)
-      v2 = v2 `xor` (shiftL v1 i63) `xor` (shiftL v1 i62) `xor` (shiftL v1 i57)
+      v2 = v2 `xor` v0              `xor` (shiftR v0 1)  `xor` (shiftR v0 2) `xor` (shiftR v0 7)
+      v1 = v1 `xor` (shiftL v0 63) `xor` (shiftL v0 62) `xor` (shiftL v0 57)
+      v3 = v3 `xor` v1             `xor` (shiftR v1 1)  `xor` (shiftR v1 2) `xor` (shiftR v1 7)
+      v2 = v2 `xor` (shiftL v1 63) `xor` (shiftL v1 62) `xor` (shiftL v1 57)
   in (v3, v2)
 
 export
