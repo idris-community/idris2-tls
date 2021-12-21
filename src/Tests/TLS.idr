@@ -202,7 +202,7 @@ tls_test target_hostname port = do
         target_hostname
         random
         []
-        (TLS_AES_128_GCM_SHA256 ::: [ TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ])
+        (tls13_supported_cipher_suites <+> tls12_supported_cipher_suites)
         (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
         keys
 

@@ -193,9 +193,12 @@ utf8_decode = go []
       go ((cast c) :: acc) ys
 
 public export
-stream_concat : Stream (List a) -> Stream a
-stream_concat ([] :: ys) = stream_concat ys
-stream_concat ((x :: xs) :: ys) = x :: stream_concat (xs :: ys)
+stream_concat : Foldable t => Stream (t a) -> Stream a
+stream_concat = go . map toList
+  where
+    go : Stream (List a) -> Stream a
+    go ([] :: ys) = stream_concat ys
+    go ((x :: xs) :: ys) = x :: stream_concat (xs :: ys)
 
 public export
 encode_ascii : String -> List Bits8
