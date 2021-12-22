@@ -192,7 +192,7 @@ tls_test target_hostname port = do
   | Left err => putStrLn $ "unable to create socket: " <+> show err
 
   putStrLn "genreating keys"
-  keys <- traverse gen_key (X25519 ::: [ SECP256r1 ])
+  keys <- traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
   random <- random_bytes _
   putStrLn "done"
 
