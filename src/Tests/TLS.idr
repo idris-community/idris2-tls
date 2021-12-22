@@ -20,6 +20,16 @@ import Utils.Bytes
 import Utils.Misc
 import Utils.Network.C
 import Utils.Parser
+import Control.Monad.Error.Either
+
+liftM : Monad m => m a -> EitherT e m a
+liftM = MkEitherT . map Right
+
+liftE : Monad m => Either e a -> EitherT e m a
+liftE = MkEitherT . pure
+
+log : HasIO io => String -> EitherT e io ()
+log = liftM . putStrLn
 
 -- Needed for big record
 -- or not? I added a putStrLn and it only printed once
@@ -35,8 +45,8 @@ recv_n_bytes sock size buf = do
     then pure $ Just buf
     else recv_n_bytes sock size buf
 
-read_record : HasIO m => Socket -> m (Either String (List Bits8))
-read_record sock = do
+read_record : HasIO m => Socket -> EitherT String m (List Bits8)
+read_record sock = MkEitherT $ do
   Just b_header <- recv_bytes sock 5
   | Nothing => pure $ Left "recv_byte (record header / alert) failed"
   let (Pure [] (Right (_, TLS12, len))) = 
@@ -72,129 +82,103 @@ gen_key group = do
   keypair <- generate_key_pair @{snd $ curve_group_to_type group}
   pure (group ** keypair)
 
-tls2_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello2 -> m ()
+tls2_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello2 -> EitherT String m ()
 tls2_test sock target_hostname state = do
-  putStrLn "tls/1.2 detected"
+  log "tls/1.2 detected"
+  b_cert <- read_record sock
 
-  Right b_cert <- read_record sock
-  | Left err => putStrLn err
+  log "parsing certificate"
+  state <- MkEitherT $ serverhello2_to_servercert state b_cert certificate_check
 
-  putStrLn "parsing certificate"
-  Right state <- serverhello2_to_servercert state b_cert certificate_check
-  | Left err => putStrLn err
+  b_skex <- read_record sock
 
-  Right b_skex <- read_record sock
-  | Left err => putStrLn err
+  log "kex"
+  state <- liftE $ servercert_to_serverkex state b_skex
 
-  putStrLn "kex"
-  let Right state = servercert_to_serverkex state b_skex
-  | Left err => putStrLn err
+  b_s_hello_done <- read_record sock
 
-  Right b_s_hello_done <- read_record sock
-  | Left err => putStrLn err
+  log "server hello done"
+  (state, handshake_data) <- liftE $ serverkex_process_serverhellodone state b_s_hello_done
 
-  putStrLn "server hello done"
-  let Right (state, handshake_data) = serverkex_process_serverhellodone state b_s_hello_done
-  | Left err => putStrLn err
+  _ <- liftM $ send_bytes sock handshake_data
 
-  _ <- send_bytes sock handshake_data
+  log "change cipher spec"
+  b_ccs <- read_record sock
 
-  putStrLn "change cipher spec"
-  Right b_ccs <- read_record sock
-  | Left err => putStrLn err
+  state <- liftE $ serverhellodone_to_applicationready2 state b_ccs
 
-  let Right state = serverhellodone_to_applicationready2 state b_ccs
-  | Left err => putStrLn err
+  log "server finished"
+  b_fin <- read_record sock
 
-  putStrLn "server finished"
-  Right b_fin <- read_record sock
-  | Left err => putStrLn err
+  state <- liftE $ applicationready2_to_application2 state b_fin
 
-  let Right state = applicationready2_to_application2 state b_fin
-  | Left err => putStrLn err
-
-  putStrLn "sending application data"
+  log "sending application data"
   let (state, wrapper) = encrypt_to_record2 state (encode_ascii $ test_http_body target_hostname)
-  _ <- send_bytes sock wrapper
+  _ <- liftM $ send_bytes sock wrapper
 
-  Right b_response <- read_record sock
-  | Left err => putStrLn err
+  b_response <- read_record sock
 
-  let Right (state, plaintext) = decrypt_from_record2 state b_response
-  | Left err => putStrLn err
+  (state, plaintext) <- liftE $ decrypt_from_record2 state b_response
 
-  putStrLn $ "vvvvvvv http response vvvvvvvv"
-  putStrLn $ xxd plaintext
-  putStrLn $ show $ utf8_decode plaintext
+  log "vvvvvvv http response vvvvvvvv"
+  log $ xxd plaintext
+  log $ show $ utf8_decode plaintext
 
-  putStrLn "ok tls/1.2"
+  log "ok tls/1.2"
 
-handshake : HasIO io => Socket -> TLSState ServerHello3 -> io (Either String (TLSState Application3))
+handshake : HasIO io => Socket -> TLSState ServerHello3 -> EitherT String io (TLSState Application3)
 handshake sock state = do
-  Right response <- read_record sock
-  | Left err => pure $ Left err
-  parsed <- tls3_serverhello_to_application state response certificate_check
+  response <- read_record sock
+  parsed <- MkEitherT $ tls3_serverhello_to_application state response certificate_check
   case parsed of
-    Right (Right (client_verify, state)) => (send_bytes sock client_verify) *> (pure $ Right state)
-    Right (Left (state)) => handshake sock state
-    Left err => pure $ Left err
+    Right (client_verify, state) => (liftM $ send_bytes sock client_verify) *> (pure state)
+    Left state => handshake sock state
 
-tls3_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello3 -> m ()
+tls3_test : HasIO m => Socket -> (target_hostname : String) -> TLSState ServerHello3 -> EitherT String m ()
 tls3_test sock target_hostname state = do
-  putStrLn "tls/1.3 detected"
-
-  putStrLn "perform handshake"
-  Right state <- handshake sock state
-  | Left err => putStrLn err
+  log "tls/1.3 detected"
+  log "perform handshake"
+  state <- handshake sock state
 
   let (state, wrapper) = encrypt_to_record state (encode_ascii $ test_http_body target_hostname)
 
-  putStrLn "wrapper:"
-  putStrLn $ xxd wrapper
+  log "wrapper:"
+  log $ xxd wrapper
 
-  _ <- send_bytes sock wrapper
+  _ <- liftM $ send_bytes sock wrapper
 
-  Right b_response <- read_record sock
-  | Left err => putStrLn err
+  b_response <- read_record sock
 
-  let Right (state, plaintext) = decrypt_from_record state b_response
-  | Left err => putStrLn err
+  (state, plaintext) <- liftE $ decrypt_from_record state b_response
 
-  putStrLn $ "vvvvvvv http response vvvvvvvv"
-  putStrLn $ xxd plaintext
-  putStrLn $ show $ utf8_decode plaintext
+  log "vvvvvvv http response vvvvvvvv"
+  log $ xxd plaintext
+  log $ show $ utf8_decode plaintext
 
-  Right b_response <- read_record sock
-  | Left err => putStrLn err
+  b_response <- read_record sock
+  (state, plaintext) <- liftE $ decrypt_from_record state b_response
 
-  let Right (state, plaintext) = decrypt_from_record state b_response
-  | Left err => putStrLn err
+  log "vvvvvvv http response vvvvvvvv"
+  log $ xxd plaintext
+  log $ show $ utf8_decode plaintext
 
-  putStrLn $ "vvvvvvv http response vvvvvvvv"
-  putStrLn $ xxd plaintext
-  putStrLn $ show $ utf8_decode plaintext
+  b_response <- read_record sock
+  (state, plaintext) <- liftE $ decrypt_from_record state b_response
 
-  Right b_response <- read_record sock
-  | Left err => putStrLn err
+  log "vvvvvvv http response vvvvvvvv"
+  log $ xxd plaintext
+  log $ show $ utf8_decode plaintext
 
-  let Right (state, plaintext) = decrypt_from_record state b_response
-  | Left err => putStrLn err
+  log "ok tls/1.3"
 
-  putStrLn $ "vvvvvvv http response vvvvvvvv"
-  putStrLn $ xxd plaintext
-  putStrLn $ show $ utf8_decode plaintext
+tls_test' : HasIO m => List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g))) ->
+            (target_hostname : String) -> Int -> EitherT String m ()
+tls_test' keypairs target_hostname port = do
+  sock <- bimapEitherT (\err => "unable to create socket: " <+> show err) id
+    $ MkEitherT 
+    $ socket AF_INET Stream 0
 
-  putStrLn "ok tls/1.3"
-
-tls_test : HasIO m => (target_hostname : String) -> Int -> m ()
-tls_test target_hostname port = do
-  Right sock <- socket AF_INET Stream 0
-  | Left err => putStrLn $ "unable to create socket: " <+> show err
-
-  putStrLn "genreating keys"
-  keys <- traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
-  random <- random_bytes _
-  putStrLn "done"
+  random <- liftM $ random_bytes _
 
   let
     init_state =
@@ -204,23 +188,32 @@ tls_test target_hostname port = do
         []
         (tls13_supported_cipher_suites <+> tls12_supported_cipher_suites)
         (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
-        keys
+        keypairs
 
-  putStrLn $ "connecting to " <+> target_hostname
-  0 <- connect sock (Hostname target_hostname) port
-  | _ => putStrLn $ "unable to connect"
-  putStrLn $ "connected"
+  log $ "connecting to " <+> target_hostname
+  0 <- liftM $ connect sock (Hostname target_hostname) port
+  | _ => throwE "unable to connect"
+  log "connected"
 
   let (client_hello, state) = tls_init_to_clienthello $ TLS_Init init_state
-  _ <- send_bytes sock client_hello
+  _ <- liftM $ send_bytes sock client_hello
 
-  Right b_server_hello <- read_record sock
+  b_server_hello <- read_record sock
+
+  log "server_hello:"
+  log $ xxd b_server_hello
+
+  tls_state <- liftE $ tls_clienthello_to_serverhello state b_server_hello
+
+  case tls_state of
+    Right state => tls3_test sock target_hostname state
+    Left state => tls2_test sock target_hostname state
+
+tls_test : HasIO m => (target_hostname : String) -> Int -> m ()
+tls_test target_hostname port = do
+  putStrLn "genreating keys"
+  keys <- traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
+  putStrLn "done"
+  Right () <- runEitherT $ tls_test' keys target_hostname port
   | Left err => putStrLn err
-
-  putStrLn "server_hello:"
-  putStrLn $ xxd b_server_hello
-
-  case tls_clienthello_to_serverhello state b_server_hello of
-    Right (Right state) => tls3_test sock target_hostname state
-    Right (Left state) => tls2_test sock target_hostname state
-    Left err => putStrLn err
+  pure ()
