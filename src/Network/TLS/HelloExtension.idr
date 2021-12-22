@@ -86,7 +86,7 @@ namespace ServerExtension
     show (SignatureAlgorithms entries) = show_record "SignatureAlgorithms" [("entry", show entries)]
     show (SupportedVersions entries) = show_record "SupportedVersions" [("entry", show entries)]
     show (KeyShare entries) = show_record "KeyShare" [("entry", show entries)]
-    show (Unknown (a, b) body) = show_record "Unknown" [("id", xxd [a, b]), ("body", xxd body)]
+    show (Unknown (a, b) body) = show_record "Unknown" [("id", xxd $ the (List Bits8) [a, b]), ("body", xxd body)]
 
 XServerExtension : Type
 XServerExtension = Eithers
