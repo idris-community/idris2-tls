@@ -1,4 +1,4 @@
-module Data.Security.PEM
+module Network.TLS.Parse.PEM
 
 import Control.Monad.Trans
 import Data.String
