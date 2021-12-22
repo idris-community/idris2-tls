@@ -71,21 +71,15 @@ to_bools_be : FiniteBits a => a -> Vect (bitSize {a}) Bool
 to_bools_be x = replace_vect finToNatLastIsBound $ to_bools_be' {a = a} Fin.last x
 
 export
-le_to_integer : {n : Nat} -> Vect n Bits8 -> Integer
-le_to_integer v = foldr (.|.) 0 $ zipWith shiftL (cast {to=Integer} <$> v) (((*8) . finToNat) <$> Fin.range)
+le_to_integer : Foldable t => t Bits8 -> Integer
+le_to_integer = go . toList
+  where
+  go : List Bits8 -> Integer
+  go v = foldr (.|.) 0 $ zipWith shiftL (cast {to=Integer} <$> v) ((*8) <$> [0..(length v)])
 
 export
-le_to_integer' : List Bits8 -> Integer
-le_to_integer' v =
-  foldr (.|.) 0 $ zipWith shiftL (cast {to=Integer} <$> v) ((*8) <$> [0..(length v)])
-
-export
-be_to_integer : {n : Nat} -> Vect n Bits8 -> Integer
-be_to_integer = le_to_integer . reverse
-
-export
-be_to_integer' : List Bits8 -> Integer
-be_to_integer' = le_to_integer' . reverse
+be_to_integer : Foldable t => t Bits8 -> Integer
+be_to_integer = le_to_integer . reverse . toList
 
 export
 integer_to_le : (n : Nat) -> Integer -> Vect n Bits8
@@ -132,8 +126,8 @@ show_hex x = strCons (hex_lower (div x 16)) $ strCons (hex_lower (mod x 16)) $ "
 
 ||| takes a list of bytes and show them using `show_hex` interspersed by a whitespace
 export
-xxd : List Bits8 -> String
-xxd = concat . intersperse " " . map show_hex
+xxd : Foldable t => t Bits8 -> String
+xxd = concat . intersperse " " . map show_hex . toList
 
 export
 string_to_ascii : (x : String) -> List Bits8

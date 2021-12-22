@@ -168,7 +168,7 @@ chacha_create_aad polykey aad ciphertext =
   let (r, s) = bimap (clamp . le_to_integer) le_to_integer $ splitAt 16 $ take 32 polykey
       length_aad = toList $ to_le {n=8} $ cast {to=Bits64} $ length aad
       length_ciphertext = toList $ to_le {n=8} $ cast {to=Bits64} $ length ciphertext
-      ns = map (\x => le_to_integer' (x <+> [0x01])) $ chunk 16 (pad 16 aad ++ pad 16 ciphertext ++ length_aad ++ length_ciphertext)
+      ns = map (\x => le_to_integer (x <+> [0x01])) $ chunk 16 (pad 16 aad ++ pad 16 ciphertext ++ length_aad ++ length_ciphertext)
   in integer_to_le 16 (s + foldl (\n,a => mul_mod r (a + n) poly1305_prime) 0 ns)
 
 public export
