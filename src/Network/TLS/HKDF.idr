@@ -27,7 +27,7 @@ hkdf_expand : (0 algo : Type) -> Hash algo => (l : Nat) -> List Bits8 -> List Bi
 hkdf_expand algo l prk info = take l $ hkdf_expand_stream algo prk info
 
 tls13_constant : List Bits8
-tls13_constant = encode_ascii "tls13 "
+tls13_constant = string_to_ascii "tls13 "
 
 export
 tls13_hkdf_expand_label : (0 algo : Type) -> Hash algo => (secret : List Bits8) -> (label : List Bits8) -> (context : List Bits8) -> (length : Nat) -> Vect length Bits8
@@ -63,20 +63,20 @@ tls13_handshake_derive algo iv key shared_secret hello_hash =
   let zeros = List.replicate (digest_nbyte {algo}) (the Bits8 0)
       early_secret = toList $ hkdf_extract algo [the Bits8 0] zeros
       empty_hash = toList $ hash algo []
-      derived_secret = tls13_hkdf_expand_label algo early_secret (encode_ascii "derived") empty_hash $ digest_nbyte {algo}
+      derived_secret = tls13_hkdf_expand_label algo early_secret (string_to_ascii "derived") empty_hash $ digest_nbyte {algo}
       handshake_secret = toList $ hkdf_extract algo (toList derived_secret) shared_secret
       client_handshake_traffic_secret = toList $
-        tls13_hkdf_expand_label algo handshake_secret (encode_ascii "c hs traffic") hello_hash $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo handshake_secret (string_to_ascii "c hs traffic") hello_hash $ digest_nbyte {algo}
       server_handshake_traffic_secret = toList $
-        tls13_hkdf_expand_label algo handshake_secret (encode_ascii "s hs traffic") hello_hash $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo handshake_secret (string_to_ascii "s hs traffic") hello_hash $ digest_nbyte {algo}
       client_handshake_key =
-        tls13_hkdf_expand_label algo client_handshake_traffic_secret (encode_ascii "key") [] key
+        tls13_hkdf_expand_label algo client_handshake_traffic_secret (string_to_ascii "key") [] key
       client_handshake_iv =
-        tls13_hkdf_expand_label algo client_handshake_traffic_secret (encode_ascii "iv") [] iv
+        tls13_hkdf_expand_label algo client_handshake_traffic_secret (string_to_ascii "iv") [] iv
       server_handshake_key =
-        tls13_hkdf_expand_label algo server_handshake_traffic_secret (encode_ascii "key") [] key
+        tls13_hkdf_expand_label algo server_handshake_traffic_secret (string_to_ascii "key") [] key
       server_handshake_iv =
-        tls13_hkdf_expand_label algo server_handshake_traffic_secret (encode_ascii "iv") [] iv
+        tls13_hkdf_expand_label algo server_handshake_traffic_secret (string_to_ascii "iv") [] iv
   in MkHandshakeKeys
       handshake_secret
       client_handshake_key
@@ -92,27 +92,27 @@ tls13_application_derive algo (MkHandshakeKeys handshake_secret _ _ _ _ _ _) han
   let zeros = List.replicate (digest_nbyte {algo}) (the Bits8 0)
       empty_hash = toList $ hash algo []
       derived_secret =
-        tls13_hkdf_expand_label algo handshake_secret (encode_ascii "derived") empty_hash $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo handshake_secret (string_to_ascii "derived") empty_hash $ digest_nbyte {algo}
       master_secret = toList $ hkdf_extract algo (toList derived_secret) zeros
       client_application_traffic_secret = toList $
-        tls13_hkdf_expand_label algo master_secret (encode_ascii "c ap traffic") handshake_hash $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo master_secret (string_to_ascii "c ap traffic") handshake_hash $ digest_nbyte {algo}
       server_application_traffic_secret = toList $
-        tls13_hkdf_expand_label algo master_secret (encode_ascii "s ap traffic") handshake_hash $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo master_secret (string_to_ascii "s ap traffic") handshake_hash $ digest_nbyte {algo}
       client_application_key =
-        tls13_hkdf_expand_label algo client_application_traffic_secret (encode_ascii "key") [] key
+        tls13_hkdf_expand_label algo client_application_traffic_secret (string_to_ascii "key") [] key
       client_application_iv =
-        tls13_hkdf_expand_label algo client_application_traffic_secret (encode_ascii "iv") [] iv
+        tls13_hkdf_expand_label algo client_application_traffic_secret (string_to_ascii "iv") [] iv
       server_application_key =
-        tls13_hkdf_expand_label algo server_application_traffic_secret (encode_ascii "key") [] key
+        tls13_hkdf_expand_label algo server_application_traffic_secret (string_to_ascii "key") [] key
       server_application_iv =
-        tls13_hkdf_expand_label algo server_application_traffic_secret (encode_ascii "iv") [] iv
+        tls13_hkdf_expand_label algo server_application_traffic_secret (string_to_ascii "iv") [] iv
   in MkApplicationKeys client_application_key server_application_key client_application_iv server_application_iv
 
 public export
 tls13_verify_data : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> List Bits8
 tls13_verify_data algo traffic_secret records_hash =
   let finished_key = toList $
-        tls13_hkdf_expand_label algo traffic_secret (encode_ascii "finished") [] $ digest_nbyte {algo}
+        tls13_hkdf_expand_label algo traffic_secret (string_to_ascii "finished") [] $ digest_nbyte {algo}
   in toList $ hkdf_extract algo finished_key records_hash
 
 public export
@@ -140,11 +140,11 @@ tls12_application_derive hwit iv key mac shared_secret client_random server_rand
   let master_secret =
         Stream.take 48
         $ hmac_stream hwit shared_secret
-        $ (encode_ascii "master secret") <+> client_random <+> server_random
+        $ (string_to_ascii "master secret") <+> client_random <+> server_random
       secret_material =
         hmac_stream hwit
           (toList master_secret)
-          (encode_ascii "key expansion" <+> server_random <+> client_random)
+          (string_to_ascii "key expansion" <+> server_random <+> client_random)
       (client_mac_key, secret_material)         = Misc.splitAt mac secret_material
       (server_mac_key, secret_material)         = Misc.splitAt mac secret_material
       (client_application_key, secret_material) = Misc.splitAt key secret_material
@@ -163,9 +163,9 @@ tls12_application_derive hwit iv key mac shared_secret client_random server_rand
 public export
 tls12_client_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
 tls12_client_verify_data algo n master_secret records_hash =
-  take _ $ hmac_stream algo master_secret (encode_ascii "client finished" <+> records_hash)
+  take _ $ hmac_stream algo master_secret (string_to_ascii "client finished" <+> records_hash)
 
 public export
 tls12_server_verify_data : Hash algo -> (n : Nat) -> List Bits8 -> List Bits8 -> Vect n Bits8
 tls12_server_verify_data algo n master_secret records_hash =
-  take _ $ hmac_stream algo master_secret (encode_ascii "server finished" <+> records_hash)
+  take _ $ hmac_stream algo master_secret (string_to_ascii "server finished" <+> records_hash)
