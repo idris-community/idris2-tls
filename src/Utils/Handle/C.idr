@@ -1,26 +1,29 @@
 module Utils.Handle.C
 
-import Utils.Handle
-import Utils.Network.C
-import Network.Socket
+import Control.Linear.LIO
+import Control.Monad.Error.Either
 import Data.Nat
 import Data.Vect
-import Control.Monad.Error.Either
+import Network.Socket
+import Utils.Handle
+import Utils.Network.C
 
-public export
-socket_to_handle : HasIO m => Socket -> Handle m
-socket_to_handle sock = MkHandle recv send
-  where
-    recv : (n : Nat) -> EitherT String m (k ** (LTE k n, Vect k Bits8))
-    recv size = do
-      Just response <- recv_bytes sock $ cast size
-      | Nothing => throwE "recv_bytes failed"
-      let response' = fromList response
-      case isLTE (length response) size of
-        Yes prf => pure ((length response) ** (prf, response'))
-        No _ => throwE "somehow recv_bytes read more than we ask for"
-    send : List Bits8 -> EitherT String m ()
-    send body = do
-      Just _ <- send_bytes sock body
-      | Nothing => throwE "send_bytes failed"
-      pure ()
+||| Turning a non-linear socket from Network.Socket into a Handle tailored for Network.TLS.Handle
+export
+socket_to_handle : Socket -> Handle Socket () (Res () (const String)) (Res () (const String))
+socket_to_handle sock = MkHandle
+  sock
+  (\(MkSocket _ _ _ _), wanted => do
+    Just output <- recv_bytes sock (cast wanted)
+    | Nothing => pure1 $ False # (() # "recv_bytes failed")
+    pure1 $ True # (output # sock)
+  )
+  (\(MkSocket _ _ _ _), input => do
+    Nothing <- send_bytes sock input
+    | Just code => pure1 $ False # (() # ("send_bytes failed with return code: " <+> show code))
+    pure1 $ True # sock
+  )
+  (\(MkSocket _ _ _ _) => do
+    Socket.close sock
+    pure1 ()
+  )
