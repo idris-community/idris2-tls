@@ -205,10 +205,6 @@ stream_concat = go . map toList
     go ((x :: xs) :: ys) = x :: stream_concat (xs :: ys)
 
 public export
-encode_ascii : String -> List Bits8
-encode_ascii = map cast . unpack
-
-public export
 ok_minus : (n : Nat) -> (m : Nat) -> LTE m n -> Nat
 ok_minus n Z LTEZero = n
 ok_minus (S n) (S m) (LTESucc wit) = ok_minus n m wit

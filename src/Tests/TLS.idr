@@ -99,7 +99,7 @@ tls2_test sock target_hostname state = do
   state <- liftE $ applicationready2_to_application2 state b_fin
 
   log "sending application data"
-  let (state, wrapper) = encrypt_to_record2 state (encode_ascii $ test_http_body target_hostname)
+  let (state, wrapper) = encrypt_to_record2 state (string_to_ascii $ test_http_body target_hostname)
   _ <- liftM $ send_bytes sock wrapper
 
   b_response <- read_record sock
@@ -126,7 +126,7 @@ tls3_test sock target_hostname state = do
   log "perform handshake"
   state <- handshake sock state
 
-  let (state, wrapper) = encrypt_to_record state (encode_ascii $ test_http_body target_hostname)
+  let (state, wrapper) = encrypt_to_record state (string_to_ascii $ test_http_body target_hostname)
 
   log "wrapper:"
   log $ xxd wrapper
