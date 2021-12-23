@@ -63,6 +63,10 @@ get_server_handshake_key hello = go hello.extensions
   go (x :: xs) = go xs
 
 public export
+CertificateCheck : (Type -> Type) -> Type
+CertificateCheck m = Certificate -> m Bool
+
+public export
 record TLSInitialState where
   constructor MkTLSInitialState
   server_hostname : String
@@ -236,7 +240,7 @@ decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' digest_state hk counter) (MkW
 list_minus : List a -> List b -> List a
 list_minus a b = take (length a `minus` length b) a
 
-tls3_serverhello_to_application_go : Monad m => TLSState ServerHello3 -> List Bits8 -> (Certificate -> m Bool) ->
+tls3_serverhello_to_application_go : Monad m => TLSState ServerHello3 -> List Bits8 -> CertificateCheck m ->
                                               (EitherT String m (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
 tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
 tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) plaintext cert_ok =
@@ -281,7 +285,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
     _ => throwE "failed to parse plaintext"
 
 public export
-tls3_serverhello_to_application : Monad m => TLSState ServerHello3 -> List Bits8 -> (Certificate -> m Bool) ->
+tls3_serverhello_to_application : Monad m => TLSState ServerHello3 -> List Bits8 -> CertificateCheck m ->
                                               m (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
 tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) b_wrapper cert_ok = runEitherT $ do
   let Right (MkDPair _ (ApplicationData application_data)) = parse_record b_wrapper alert_or_arecord
@@ -334,7 +338,7 @@ encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_c
   in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
 
 public export
-serverhello2_to_servercert : Monad m => TLSState ServerHello2 -> List Bits8 -> (Certificate -> m Bool) -> m (Either String (TLSState ServerCert2))
+serverhello2_to_servercert : Monad m => TLSState ServerHello2 -> List Bits8 -> CertificateCheck m -> m (Either String (TLSState ServerCert2))
 serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runEitherT $ do
   let Right (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) = parse_record b_cert alert_or_arecord2
   | _ => throwE "Parsing error: record not server_hello"

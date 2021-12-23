@@ -31,20 +31,6 @@ liftE = MkEitherT . pure
 log : HasIO io => String -> EitherT e io ()
 log = liftM . putStrLn
 
--- Needed for big record
--- or not? I added a putStrLn and it only printed once
--- but if I just use recv_bytes it would only read 4006 bytes instead of 4580
--- tested on www.hkust.edu.hk:443
--- TODO: find out what the hell is happening here
-recv_n_bytes : HasIO m => Socket -> Nat -> List Bits8 -> m (Maybe (List Bits8))
-recv_n_bytes sock size buf = do
-  Just response <- recv_bytes sock $ cast $ minus size $ length buf
-  | Nothing => pure Nothing
-  let buf = buf <+> response
-  if (length buf) >= size 
-    then pure $ Just buf
-    else recv_n_bytes sock size buf
-
 read_record : HasIO m => Socket -> EitherT String m (List Bits8)
 read_record sock = MkEitherT $ do
   Just b_header <- recv_bytes sock 5
@@ -53,7 +39,7 @@ read_record sock = MkEitherT $ do
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => pure $ Left $ "ALERT: " <+> show x
   | _ => pure $ Left $ "unable to parse header: " <+> xxd b_header
-  Just b_body <- recv_n_bytes sock (cast len) []
+  Just b_body <- recv_bytes sock (cast len)
   | Nothing => pure $ Left "recv_byte (record body) failed"
   case length b_body == cast len of
     False => 
@@ -74,7 +60,7 @@ example_hostname : String
 example_hostname = "www.cloudflare.com"
 
 --- TODO: this
-certificate_check : HasIO io => Certificate -> io Bool
+certificate_check : HasIO io => CertificateCheck io
 certificate_check certficiate = pure True
 
 gen_key : MonadRandom m => (g : SupportedGroup) -> m (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
