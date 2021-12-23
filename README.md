@@ -5,6 +5,10 @@ A portable idris2 implementation of TLS 1.2 and TLS 1.3 protocol.
 This library aims to provide a TLS implementation in Idris that supports communication with most modern websites and provide reasonable performance.
 Not meant for production. Read the notes on security.
 
+# Example
+An example of how the TLS socket is used can be found [here](src/Tests/LTLS.idr).
+More examples on how to use the internal modules can be found in the [Tests](src/Tests) folder.
+
 # Support coverage
 The library currently supports the following cipher suites:
 
@@ -79,6 +83,12 @@ and in general more pleasing to work with. While other bytes library may yield b
 Our cryptographic primitives are most definitely vulnerable to all sorts of side channel attack, 
 e.g. [timing attack](https://en.wikipedia.org/wiki/Timing_attack). The code has not been audited at all, and the authors
 have zero background in cryptography nor cybersecurity. Do not use this under the assumption that it is secure. Use at your own risk.
+
+# TODO
+- Certificate parsing
+- Verifying handshake keys with certificate
+- Certificate chain verification
+- OCSP stapling
 
 # License
 This project is licensed under the ISC license. See [LICENSE](LICENSE).
