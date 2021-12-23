@@ -14,13 +14,13 @@ socket_to_handle : Socket -> Handle Socket () (Res String (const ())) (Res Strin
 socket_to_handle sock = MkHandle
   sock
   (\(MkSocket _ _ _ _), wanted => do
-    Just output <- recv_bytes sock (cast wanted)
-    | Nothing => pure1 $ False # ("recv_bytes failed" # ())
+    Right output <- recv_bytes sock (cast wanted)
+    | Left code => pure1 $ False # ("recv_bytes failed with code " <+> show code # ())
     pure1 $ True # (output # sock)
   )
   (\(MkSocket _ _ _ _), input => do
-    Just _ <- send_bytes sock input
-    | Nothing => pure1 $ False # ("send_bytes failed" # ())
+    Right _ <- send_bytes sock input
+    | Left code => pure1 $ False # ("send_bytes failed with code " <+> show code # ())
     pure1 $ True # sock
   )
   (\(MkSocket _ _ _ _) => do

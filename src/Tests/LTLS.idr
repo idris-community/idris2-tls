@@ -45,4 +45,3 @@ tls_test target_hostname port = do
     -- close handle
     close handle
     putStrLn "ok"
-
