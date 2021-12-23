@@ -29,8 +29,6 @@ modules = Crypto.AES,
           Crypto.RSA,
           Crypto.Random.C,
           Crypto.Random.JS,
-          Data.Security.DER,
-          Data.Security.PEM,
           Network.TLS,
           Network.TLS.Core,
           Network.TLS.Handshake,
@@ -42,8 +40,8 @@ modules = Crypto.AES,
           Network.TLS.HKDF,
           Network.TLS.Handle,
           Network.TLS.AEAD,
-          Tests.Crypto,
-          Tests.TLS,
+          Network.TLS.Parse.DER,
+          Network.TLS.Parse.PEM,
           Utils.Base64,
           Utils.Bytes,
           Utils.Misc,
@@ -56,6 +54,6 @@ modules = Crypto.AES,
           Utils.Show,
           Utils.Network.C,
           Utils.Handle.C
-    
+
 opts = "-Wno-shadowing"
 sourcedir = "src"
