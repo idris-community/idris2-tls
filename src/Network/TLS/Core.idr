@@ -29,7 +29,7 @@ tls13_supported_cipher_suites =
 public export
 tls12_supported_cipher_suites : List1 CipherSuite
 tls12_supported_cipher_suites =
-  TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 ::: 
+  TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 :::
   [ TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
   , TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
   , TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
@@ -130,7 +130,7 @@ record TLS2AppReadyState a b c d where
 
 export
 data TLS2ApplicationState : (aead : Type) -> AEAD aead -> Type where
-  MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (fixed_iv_length {a=a}) (enc_key_length {a=a}) (mac_key_length @{a'}) -> Nat -> Nat -> 
+  MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (fixed_iv_length {a=a}) (enc_key_length {a=a}) (mac_key_length @{a'}) -> Nat -> Nat ->
                            TLS2ApplicationState a a'
 
 public export
@@ -224,9 +224,9 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
     TLS12 =>
       let (hash_algo ** hwit) = ciphersuite_to_prf_type server_hello.cipher_suite
           digest_state = update (drop 5 b_server_hello) $ update state.b_client_hello $ init hash_algo
-      in Right 
-         $ Left 
-         $ TLS2_ServerHello 
+      in Right
+         $ Left
+         $ TLS2_ServerHello
          $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite state.dh_keys hwit digest_state
     tlsvr => Left $ "unsupported version: " <+> show tlsvr
 
@@ -344,10 +344,10 @@ serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runE
   | _ => throwE "Parsing error: record not server_hello"
   True <- MkEitherT $ map Right $ cert_ok server_cert
   | False => throwE "cannot verify certificate"
-  pure $ TLS2_ServerCertificate 
-       $ MkTLS2ServerCertificateState 
-           server_hello 
-           server_cert 
+  pure $ TLS2_ServerCertificate
+       $ MkTLS2ServerCertificateState
+           server_hello
+           server_cert
            server_hello.cipher_suite
            server_hello.dh_keys
            server_hello.digest_wit
@@ -372,20 +372,20 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
   let Just (_, chosen_pk) = find (\(g,_) => g == server_kex.server_pk_group) $ toList $ map (uncurry encode_public_keys) server_cert.dh_keys
   | Nothing => Left "cannot find public key that match the server's"
   -- TODO: check if key is signed by the certificate
-  Right $ TLS2_ServerKEX 
-        $ MkTLS2ServerKEXState 
-            awit 
-            server_cert.digest_wit 
+  Right $ TLS2_ServerKEX
+        $ MkTLS2ServerKEXState
+            awit
+            server_cert.digest_wit
             (update @{server_cert.digest_wit} (drop 5 b_kex) server_cert.digest_state)
             (ciphersuite_to_verify_data_len server_cert.cipher_suite)
-            chosen_pk 
+            chosen_pk
             app_key
 
 encrypt_to_wrapper2 : AEAD a => Vect (enc_key_length {a=a}) Bits8 -> Vect (fixed_iv_length {a=a}) Bits8 -> Vect (mac_key_length {a=a}) Bits8 ->
                       List Bits8 -> RecordType -> Nat -> List Bits8
 encrypt_to_wrapper2 key iv mac_key plaintext record_id sequence =
-  let aad = 
-        (toList $ to_be {n=8} (cast {to=Bits64} sequence)) 
+  let aad =
+        (toList $ to_be {n=8} (cast {to=Bits64} sequence))
         <+> [record_type_to_id record_id, 0x03, 0x03] -- 0x03 0x03 is the byte representation of TLS 1.2
         <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext))
       (eiv, ciphertext, mac) = encrypt key iv mac_key sequence plaintext aad
@@ -404,9 +404,9 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h'
         (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** ChangeCipherSpec [0x01]))
   let digest_state =
         update (drop 5 b_client_kex) $ update (drop 5 b_hello_done) digest_state
-  let client_verify_data = (with_id no_id_finished).encode {i = List (Posed Bits8)} 
-        $ Finished 
-        $ MkFinished 
+  let client_verify_data = (with_id no_id_finished).encode {i = List (Posed Bits8)}
+        $ Finished
+        $ MkFinished
         $ toList
         (tls12_client_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state))
   let b_client_verify_data =
@@ -443,7 +443,7 @@ decrypt_from_wrapper2 : AEAD a =>
                         Either String (List Bits8)
 decrypt_from_wrapper2 sequence record_type wrapper iv key mac_key =
   let aadf = (\plaintext =>
-        (toList $ to_be {n=8} (cast {to=Bits64} sequence)) 
+        (toList $ to_be {n=8} (cast {to=Bits64} sequence))
         <+> [record_type_to_id record_type, 0x03, 0x03] -- 0x03 0x03 is the byte representation of TLS 1.2
         <+> (toList $ to_be {n=2} (cast {to=Bits16} $ length plaintext)))
       (plaintext, ok) = decrypt key iv wrapper.iv_data mac_key sequence wrapper.encrypted_data aadf (toList wrapper.auth_tag)
@@ -456,7 +456,7 @@ applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
   wrapper <- parse_tls12_wrapper @{a'} Handshake b_verifydata
   plaintext <-
     decrypt_from_wrapper2 Z Handshake wrapper app_key.server_application_iv app_key.server_application_key app_key.server_mac_key
-  let result = feed (map (uncurry MkPosed) $ enumerate Z plaintext) $ (with_id no_id_finished).decode {i = List (Posed Bits8)} 
+  let result = feed (map (uncurry MkPosed) $ enumerate Z plaintext) $ (with_id no_id_finished).decode {i = List (Posed Bits8)}
   let (Pure [] (Finished $ MkFinished verify_data')) = result
   | _ => Left $ "Parsing error: decrypted record not Finished"
   let verify_data = tls12_server_verify_data h' vdlen (toList app_key.master_secret) (toList $ finalize digest_state)

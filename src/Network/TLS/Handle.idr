@@ -135,7 +135,7 @@ tlshandle_read wanted (MkTLSHandle handle state buffer) decrypt = do
   case decrypt state b_record of
     Right (state, plaintext) =>
       let (a, b) = splitAt wanted (buffer <+> plaintext)
-      in if (length a) == wanted 
+      in if (length a) == wanted
             then pure1 (True # (a # MkTLSHandle handle state b))
             else tlshandle_read wanted (MkTLSHandle handle state a) decrypt
     Left error => (close handle) >>= (\s => pure1 (False # (error # s)))

@@ -36,7 +36,7 @@ test_certificate =
 
 test_der : HasIO io => io ()
 test_der = do
-  let Right (blob, _) = parse parse_pem_blob test_certificate 
+  let Right (blob, _) = parse parse_pem_blob test_certificate
   | Left err => putStrLn err
   putStrLn "certificate"
   putStrLn $ xxd blob.content

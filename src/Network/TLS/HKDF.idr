@@ -40,7 +40,7 @@ tls13_hkdf_expand_label algo secret label context lth =
 
 public export
 record HandshakeKeys (iv : Nat) (key : Nat) where
-  constructor MkHandshakeKeys 
+  constructor MkHandshakeKeys
   handshake_secret : List Bits8
   client_handshake_key : Vect key Bits8
   server_handshake_key : Vect key Bits8

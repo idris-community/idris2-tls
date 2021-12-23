@@ -56,7 +56,7 @@ aes_gcm_create_aad mode key iv aad ciphertext =
         $ MkF128
         $ concat
         $ encrypt_block mode key'
-        $ group 4 4 
+        $ group 4 4
         $ map (const 0)
         $ Fin.range
       MkF128 output = foldl (\e,a => gcm_mult h $ xor a e) zero $ map toF128 input
@@ -150,7 +150,7 @@ AEAD TLS12_AES_256_GCM where
         ciphertext = zipWith xor plaintext (toList $ Stream.take (length plaintext) $ aes_keystream AES256 key iv')
         mac_tag = aes_gcm_create_aad AES256 key iv' aad ciphertext
     in (explicit_iv, ciphertext, mac_tag)
-  
+
   decrypt key iv explicit_iv mac_key seq_no ciphertext aadf mac_tag' =
     let iv' = iv ++ explicit_iv
         plaintext = zipWith xor ciphertext (toList $ Stream.take (length ciphertext) $ aes_keystream AES256 key iv')

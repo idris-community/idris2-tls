@@ -164,7 +164,7 @@ namespace Message
     public_key : List Bits8
 
   Show ClientKeyExchange where
-    show x = show_record "ClientKeyExchange" 
+    show x = show_record "ClientKeyExchange"
       [ ("public_key", show x.public_key)
       ]
 
@@ -195,7 +195,7 @@ Show (Handshake type) where
   show (ClientKeyExchange x) = show x
 
 XHandshake : Type
-XHandshake = Eithers 
+XHandshake = Eithers
   [ Handshake ClientHello
   , Handshake ServerHello
   , Handshake EncryptedExtensions
