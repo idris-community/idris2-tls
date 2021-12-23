@@ -11,6 +11,10 @@ import Data.List1
 import Syntax.WithProof
 
 public export
+kill_linear : Void -> (1 _ : a) -> s
+kill_linear x = void x
+
+public export
 subset_to_fin : {a : _} -> Subset Nat (`LT` a) -> Fin a
 subset_to_fin (Element x wit) = natToFinLT x {prf = wit}
 

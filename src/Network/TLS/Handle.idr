@@ -1,11 +1,14 @@
 module Network.TLS.Handle
 
+import Control.Linear.LIO
 import Control.Monad.Error.Either
 import Control.Monad.State
 import Crypto.ECDH
 import Crypto.Random
+import Data.List
 import Data.List1
 import Data.Vect
+import Data.Void
 import Network.TLS.Core
 import Network.TLS.Magic
 import Network.TLS.Parsing
@@ -14,10 +17,6 @@ import Utils.Bytes
 import Utils.Handle
 import Utils.Misc
 import Utils.Parser
-import Data.Void
-import Data.List
-
-import Control.Linear.LIO
 
 public export
 tls_version_to_state_type : TLSVersion -> Type
@@ -26,34 +25,32 @@ tls_version_to_state_type TLS13 = TLSState Application3
 tls_version_to_state_type _ = Void
 
 export
-record TLSHandle (tls_version : TLSVersion) t_ok t_closed where
+record TLSHandle (version : TLSVersion) t_ok t_closed where
   constructor MkTLSHandle
   1 handle : Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
-  state : tls_version_to_state_type tls_version
+  state : tls_version_to_state_type version
   buffer : List Bits8
 
 public export
-Uninhabited (TLSHandle TLS11 t_ok t_closed) where
+Uninhabited (TLSHandle TLS10 t_ok t_closed) where
   uninhabited = state
 
 public export
-Uninhabited (TLSHandle TLS10 t_ok t_closed) where
+Uninhabited (TLSHandle TLS11 t_ok t_closed) where
   uninhabited = state
 
 OkOrError : TLSVersion -> Type -> Type -> Type
 OkOrError tls_version t_ok t_closed = Res Bool $ \ok => if ok then TLSHandle tls_version t_ok t_closed else Res String (const t_closed)
 
 public export
-UnderlyingHandle : Type -> Type -> Type
-UnderlyingHandle t_ok t_closed = Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
+Handle' : Type -> Type -> Type
+Handle' t_ok t_closed = Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
 
-read_record : LinearIO m => (1 _ : UnderlyingHandle t_ok t_closed) -> L1 m $ Res Bool $ \ok => if ok
-  then Res (List Bits8) (const $ UnderlyingHandle t_ok t_closed)
-  else Res String (const t_closed)
+read_record : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ Res Bool $ \ok => if ok then Res (List Bits8) (const $ Handle' t_ok t_closed) else Res String (const t_closed)
 read_record handle = do
   -- read header
   (True # (b_header # handle)) <- read handle 5
-  | (False # (error # handle)) => pure1 (False # ("recv_byte (record header / alert) failed" <+> error # handle))
+  | (False # (error # handle)) => pure1 (False # ("read (record header / alert) failed" <+> error # handle))
   let (Pure [] (Right (_, TLS12, len))) =
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => (close handle) >>= (\s => pure1 (False # (("ALERT: " <+> show x) # s)))
@@ -61,28 +58,20 @@ read_record handle = do
 
   -- read record content
   (True # (b_body # handle)) <- read handle (cast len)
-  | (False # (error # handle)) => pure1 (False # ("recv_byte (record body) failed: " <+> error # handle))
+  | (False # (error # handle)) => pure1 (False # ("read (record body) failed: " <+> error # handle))
   if length b_body == cast len
     then pure1 (True # (b_header <+> b_body # handle))
-    else let err =
-             "length does not match header: "
-               <+> xxd b_body
-               <+> "\nexpected length: "
-               <+> show len
-               <+> "\nactual length: "
-               <+> (show $ length b_body)
+    else let err = "length does not match header: " <+> xxd b_body
+               <+> "\nexpected length: " <+> show len
+               <+> "\nactual length: " <+> (show $ length b_body)
          in (close handle) >>= (\s => pure1 (False # (err # s)))
 
-gen_key : MonadRandom m => (g : SupportedGroup) ->
-                           m (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
+gen_key : MonadRandom m => (g : SupportedGroup) -> m (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 gen_key group = do
   keypair <- generate_key_pair @{snd $ curve_group_to_type group}
   pure (group ** keypair)
 
-tls2_handshake : LinearIO io => TLSState ServerHello2 ->
-                 (1 _ : UnderlyingHandle t_ok t_closed) ->
-                 CertificateCheck IO ->
-                 L1 io (OkOrError TLS12 t_ok t_closed)
+tls2_handshake : LinearIO io => TLSState ServerHello2 -> (1 _ : Handle' t_ok t_closed) -> CertificateCheck IO -> L1 io (OkOrError TLS12 t_ok t_closed)
 tls2_handshake state handle cert_ok = do
   (True # (b_cert # handle)) <- read_record handle
   | (False # other) => pure1 (False # other)
@@ -118,10 +107,7 @@ tls2_handshake state handle cert_ok = do
     Right state => pure1 (True # MkTLSHandle handle state [])
     Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
 
-tls3_handshake : LinearIO io => TLSState ServerHello3 ->
-                 (1 _ : UnderlyingHandle t_ok t_closed) ->
-                 CertificateCheck IO ->
-                 L1 io (OkOrError TLS13 t_ok t_closed)
+tls3_handshake : LinearIO io => TLSState ServerHello3 -> (1 _ : Handle' t_ok t_closed) -> CertificateCheck IO -> L1 io (OkOrError TLS13 t_ok t_closed)
 tls3_handshake state handle cert_ok = do
   (True # (b_response # handle)) <- read_record handle
   | (False # other) => pure1 (False # other)
@@ -136,26 +122,14 @@ tls3_handshake state handle cert_ok = do
     Left error =>
       (close handle) >>= (\s => pure1 (False # (error # s)))
 
-{-
-encrypt_to_record : TLSState Application3 -> List Bits8 -> (TLSState Application3, List Bits8)
-encrypt_to_record2 : TLSState Application2 -> List Bits8 -> (TLSState Application2, List Bits8)
--}
-
 DecryptFunction : Type -> Type
 DecryptFunction state = state -> List Bits8 -> Either String (state, List Bits8)
 
 EncryptFunction : Type -> Type
 EncryptFunction state = state -> List Bits8 -> (state, List Bits8)
 
-Toriel : TLSVersion -> Type -> Type -> Type
-Toriel tls_version t_ok t_closed = Res Bool $ ReadHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed))
-
-Asgore : TLSVersion -> Type -> Type -> Type
-Asgore tls_version t_ok t_closed = Res Bool $ WriteHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed))
-
-toriel : {tls_version : TLSVersion} -> LinearIO io => Nat ->
-         (1 _ : TLSHandle tls_version t_ok t_closed) -> DecryptFunction (tls_version_to_state_type tls_version) -> L1 io (Toriel tls_version t_ok t_closed)
-toriel wanted (MkTLSHandle handle state buffer) decrypt = do
+tlshandle_read : {version : _} -> LinearIO io => (wanted : Nat) -> (1 _ : TLSHandle version t_ok t_closed) -> DecryptFunction (tls_version_to_state_type version) -> L1 io (Res Bool $ ReadHack (TLSHandle version t_ok t_closed) (Res String (const t_closed)))
+tlshandle_read wanted (MkTLSHandle handle state buffer) decrypt = do
   (True # (b_record # handle)) <- read_record handle
   | (False # other) => pure1 (False # other)
   case decrypt state b_record of
@@ -163,44 +137,56 @@ toriel wanted (MkTLSHandle handle state buffer) decrypt = do
       let (a, b) = splitAt wanted (buffer <+> plaintext)
       in if (length a) == wanted 
             then pure1 (True # (a # MkTLSHandle handle state b))
-            else toriel wanted (MkTLSHandle handle state a) decrypt
+            else tlshandle_read wanted (MkTLSHandle handle state a) decrypt
     Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
 
-asgore : {tls_version : TLSVersion} -> LinearIO io => List (List Bits8) ->
-         (1 _ : TLSHandle tls_version t_ok t_closed) -> EncryptFunction (tls_version_to_state_type tls_version) -> L1 io (Asgore tls_version t_ok t_closed)
-asgore [] sock encrypt = pure1 (True # sock)
-asgore (x :: xs) (MkTLSHandle handle state buffer) encrypt = do
+tlshandle_write : {tls_version : TLSVersion} -> LinearIO io => List (List Bits8) -> (1 _ : TLSHandle tls_version t_ok t_closed) -> EncryptFunction (tls_version_to_state_type tls_version) -> L1 io (Res Bool $ WriteHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed)))
+tlshandle_write [] sock encrypt = pure1 (True # sock)
+tlshandle_write (x :: xs) (MkTLSHandle handle state buffer) encrypt = do
   let (state, b_record) = encrypt state x
   (True # handle) <- write handle b_record
-  | (False # (error # handle)) => pure1 (False # ("send_byte (application data) failed: " <+> error # handle))
-  asgore xs (MkTLSHandle handle state buffer) encrypt
+  | (False # (error # handle)) => pure1 (False # ("write (application data) failed: " <+> error # handle))
+  tlshandle_write xs (MkTLSHandle handle state buffer) encrypt
 
-Sans : Type -> Type -> Type
-Sans a s = (1 _ : a) -> s
+||| Reference: OpenSSL
+chunk_size : Nat
+chunk_size = 0x2000
 
-sans : Void -> Sans s a
-sans kris = the (Sans _ _) $ void kris
-
-tlshandle_to_handle : {tls_version : TLSVersion} -> (1 _ : TLSHandle tls_version t_ok t_closed) ->
-                      Handle (TLSHandle tls_version t_ok t_closed) t_closed (Res String $ const t_closed) (Res String $ const t_closed)
-tlshandle_to_handle {tls_version=TLS10} (MkTLSHandle handle state buffer) = (sans state) handle
-tlshandle_to_handle {tls_version=TLS11} (MkTLSHandle handle state buffer) = (sans state) handle
-tlshandle_to_handle {tls_version=TLS12} handle = MkHandle
+tlshandle_to_handle : {version : _} -> (1 _ : TLSHandle version t_ok t_closed) -> Handle' (TLSHandle version t_ok t_closed) t_closed
+tlshandle_to_handle {version=TLS10} (MkTLSHandle handle state buffer) = (kill_linear state) handle
+tlshandle_to_handle {version=TLS11} (MkTLSHandle handle state buffer) = (kill_linear state) handle
+tlshandle_to_handle {version=TLS12} handle = MkHandle
   handle
-  ( \sock, len => toriel len sock decrypt_from_record2 )
-  ( \sock, input => asgore (chunk 0x2000 input) sock encrypt_to_record2 )
+  ( \sock, len => tlshandle_read len sock decrypt_from_record2 )
+  ( \sock, input => tlshandle_write (chunk chunk_size input) sock encrypt_to_record2 )
   ( \(MkTLSHandle handle state buffer) => close handle )
-tlshandle_to_handle {tls_version=TLS13} handle = MkHandle
+tlshandle_to_handle {version=TLS13} handle = MkHandle
   handle
-  ( \sock, len => toriel len sock decrypt_from_record )
-  ( \sock, input => asgore (chunk 0x2000 input) sock encrypt_to_record )
+  ( \sock, len => tlshandle_read len sock decrypt_from_record )
+  ( \sock, input => tlshandle_write (chunk chunk_size input) sock encrypt_to_record )
   ( \(MkTLSHandle handle state buffer) => close handle )
+
+TLSHandle' : Type -> Type -> Type
+TLSHandle' t_ok t_closed = Res TLSVersion $ \version => TLSHandle version t_ok t_closed
+
+abstract_tlshandle : (1 _ : TLSHandle' t_ok t_closed) -> Handle' (TLSHandle' t_ok t_closed) t_closed
+abstract_tlshandle x = MkHandle
+  x
+  ( \(v # h), wanted => do
+      (True # (output # MkHandle h _ _ _)) <- read (tlshandle_to_handle h) wanted
+      | (False # (err # x)) => pure1 $ False # (err # x)
+      pure1 $ True # (output # (_ # h))
+  )
+  ( \(v # h), input => do
+      (True # MkHandle h _ _ _) <- write (tlshandle_to_handle h) input
+      | (False # (err # x)) => pure1 $ False # (err # x)
+      pure1 $ True # (_ # h)
+  )
+  ( \(v # h) => close $ tlshandle_to_handle h
+  )
 
 export
-tls_handshake : (MonadRandom IO, LinearIO io) => String ->
-                (1 _ : UnderlyingHandle t_ok t_closed) ->
-                CertificateCheck IO ->
-                L1 io (Res Bool $ \ok => if ok then Res TLSVersion (\tls_version => TLSHandle tls_version t_ok t_closed) else Res String (const t_closed))
+tls_handshake : (MonadRandom IO, LinearIO io) => String -> (1 _ : Handle' t_ok t_closed) -> CertificateCheck IO -> L1 io (Res Bool $ \ok => if ok then Handle' (TLSHandle' t_ok t_closed) t_closed else Res String (const t_closed))
 tls_handshake target_hostname handle cert_ok = do
   random <- liftIO1 $ random_bytes _
   keypairs <- liftIO1 $ traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
@@ -221,12 +207,14 @@ tls_handshake target_hostname handle cert_ok = do
   | (False # other) => pure1 (False # other)
 
   case tls_clienthello_to_serverhello state b_server_hello of
-    Right (Right state) => do
-      (True # ok) <- tls3_handshake state handle cert_ok
-      | (False # no) => pure1 (False # no)
-      pure1 (True # (TLS13 # ok))
     Right (Left state) => do
       (True # ok) <- tls2_handshake state handle cert_ok
       | (False # no) => pure1 (False # no)
-      pure1 (True # (TLS12 # ok))
-    Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
+      pure1 $ True # abstract_tlshandle (_ # ok)
+    Right (Right state) => do
+      (True # ok) <- tls3_handshake state handle cert_ok
+      | (False # no) => pure1 (False # no)
+      pure1 $ True # abstract_tlshandle (_ # ok)
+    Left error => do
+      h <- close handle
+      pure1 $ False # (error # h)
