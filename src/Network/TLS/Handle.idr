@@ -14,6 +14,8 @@ import Utils.Bytes
 import Utils.Handle
 import Utils.Misc
 import Utils.Parser
+import Data.Void
+import Data.List
 
 import Control.Linear.LIO
 
@@ -26,21 +28,28 @@ tls_version_to_state_type _ = Void
 export
 record TLSHandle (tls_version : TLSVersion) t_ok t_closed where
   constructor MkTLSHandle
-  1 handle : Handle t_ok t_closed (Res String $ \_ => t_closed) (Res String $ \_ => t_closed)
+  1 handle : Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
   state : tls_version_to_state_type tls_version
   buffer : List Bits8
 
 public export
+Uninhabited (TLSHandle TLS11 t_ok t_closed) where
+  uninhabited = state
+
+public export
+Uninhabited (TLSHandle TLS10 t_ok t_closed) where
+  uninhabited = state
+
 OkOrError : TLSVersion -> Type -> Type -> Type
-OkOrError tls_version t_ok t_closed = Res Bool $ \ok => if ok then TLSHandle tls_version t_ok t_closed else Res String (\_ => t_closed)
+OkOrError tls_version t_ok t_closed = Res Bool $ \ok => if ok then TLSHandle tls_version t_ok t_closed else Res String (const t_closed)
 
 public export
 UnderlyingHandle : Type -> Type -> Type
-UnderlyingHandle t_ok t_closed = Handle t_ok t_closed (Res String $ \_ => t_closed) (Res String $ \_ => t_closed)
+UnderlyingHandle t_ok t_closed = Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
 
 read_record : LinearIO m => (1 _ : UnderlyingHandle t_ok t_closed) -> L1 m $ Res Bool $ \ok => if ok
-  then Res (List Bits8) (\_ => UnderlyingHandle t_ok t_closed)
-  else Res String (\_ => t_closed)
+  then Res (List Bits8) (const $ UnderlyingHandle t_ok t_closed)
+  else Res String (const t_closed)
 read_record handle = do
   -- read header
   (True # (b_header # handle)) <- read handle 5
@@ -127,11 +136,71 @@ tls3_handshake state handle cert_ok = do
     Left error =>
       (close handle) >>= (\s => pure1 (False # (error # s)))
 
+{-
+encrypt_to_record : TLSState Application3 -> List Bits8 -> (TLSState Application3, List Bits8)
+encrypt_to_record2 : TLSState Application2 -> List Bits8 -> (TLSState Application2, List Bits8)
+-}
+
+DecryptFunction : Type -> Type
+DecryptFunction state = state -> List Bits8 -> Either String (state, List Bits8)
+
+EncryptFunction : Type -> Type
+EncryptFunction state = state -> List Bits8 -> (state, List Bits8)
+
+Toriel : TLSVersion -> Type -> Type -> Type
+Toriel tls_version t_ok t_closed = Res Bool $ ReadHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed))
+
+Asgore : TLSVersion -> Type -> Type -> Type
+Asgore tls_version t_ok t_closed = Res Bool $ WriteHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed))
+
+toriel : {tls_version : TLSVersion} -> LinearIO io => Nat ->
+         (1 _ : TLSHandle tls_version t_ok t_closed) -> DecryptFunction (tls_version_to_state_type tls_version) -> L1 io (Toriel tls_version t_ok t_closed)
+toriel wanted (MkTLSHandle handle state buffer) decrypt = do
+  (True # (b_record # handle)) <- read_record handle
+  | (False # other) => pure1 (False # other)
+  case decrypt state b_record of
+    Right (state, plaintext) =>
+      let (a, b) = splitAt wanted (buffer <+> plaintext)
+      in if (length a) == wanted 
+            then pure1 (True # (a # MkTLSHandle handle state b))
+            else toriel wanted (MkTLSHandle handle state a) decrypt
+    Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
+
+asgore : {tls_version : TLSVersion} -> LinearIO io => List (List Bits8) ->
+         (1 _ : TLSHandle tls_version t_ok t_closed) -> EncryptFunction (tls_version_to_state_type tls_version) -> L1 io (Asgore tls_version t_ok t_closed)
+asgore [] sock encrypt = pure1 (True # sock)
+asgore (x :: xs) (MkTLSHandle handle state buffer) encrypt = do
+  let (state, b_record) = encrypt state x
+  (True # handle) <- write handle b_record
+  | (False # (error # handle)) => pure1 (False # ("send_byte (application data) failed: " <+> error # handle))
+  asgore xs (MkTLSHandle handle state buffer) encrypt
+
+Sans : Type -> Type -> Type
+Sans a s = (1 _ : a) -> s
+
+sans : Void -> Sans s a
+sans kris = the (Sans _ _) $ void kris
+
+tlshandle_to_handle : {tls_version : TLSVersion} -> (1 _ : TLSHandle tls_version t_ok t_closed) ->
+                      Handle (TLSHandle tls_version t_ok t_closed) t_closed (Res String $ const t_closed) (Res String $ const t_closed)
+tlshandle_to_handle {tls_version=TLS10} (MkTLSHandle handle state buffer) = (sans state) handle
+tlshandle_to_handle {tls_version=TLS11} (MkTLSHandle handle state buffer) = (sans state) handle
+tlshandle_to_handle {tls_version=TLS12} handle = MkHandle
+  handle
+  ( \sock, len => toriel len sock decrypt_from_record2 )
+  ( \sock, input => asgore (chunk 0x2000 input) sock encrypt_to_record2 )
+  ( \(MkTLSHandle handle state buffer) => close handle )
+tlshandle_to_handle {tls_version=TLS13} handle = MkHandle
+  handle
+  ( \sock, len => toriel len sock decrypt_from_record )
+  ( \sock, input => asgore (chunk 0x2000 input) sock encrypt_to_record )
+  ( \(MkTLSHandle handle state buffer) => close handle )
+
 export
 tls_handshake : (MonadRandom IO, LinearIO io) => String ->
                 (1 _ : UnderlyingHandle t_ok t_closed) ->
                 CertificateCheck IO ->
-                L1 io (Res Bool $ \ok => if ok then Res TLSVersion (\tls_version => TLSHandle tls_version t_ok t_closed) else Res String (\_ => t_closed))
+                L1 io (Res Bool $ \ok => if ok then Res TLSVersion (\tls_version => TLSHandle tls_version t_ok t_closed) else Res String (const t_closed))
 tls_handshake target_hostname handle cert_ok = do
   random <- liftIO1 $ random_bytes _
   keypairs <- liftIO1 $ traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
