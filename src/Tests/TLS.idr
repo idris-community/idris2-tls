@@ -35,21 +35,21 @@ read_record : HasIO m => Socket -> EitherT String m (List Bits8)
 read_record sock = MkEitherT $ do
   Just b_header <- recv_bytes sock 5
   | Nothing => pure $ Left "recv_byte (record header / alert) failed"
-  let (Pure [] (Right (_, TLS12, len))) = 
+  let (Pure [] (Right (_, TLS12, len))) =
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => pure $ Left $ "ALERT: " <+> show x
   | _ => pure $ Left $ "unable to parse header: " <+> xxd b_header
   Just b_body <- recv_bytes sock (cast len)
   | Nothing => pure $ Left "recv_byte (record body) failed"
   case length b_body == cast len of
-    False => 
-      pure 
-      $ Left 
-      $ "length does not match header: " 
-      <+> xxd b_body 
-      <+> "\nexpected length: " 
-      <+> show len 
-      <+> "\nactual length: " 
+    False =>
+      pure
+      $ Left
+      $ "length does not match header: "
+      <+> xxd b_body
+      <+> "\nexpected length: "
+      <+> show len
+      <+> "\nactual length: "
       <+> (show $ length b_body)
     True => pure $ Right $ b_header <+> b_body
 
@@ -161,7 +161,7 @@ tls_test' : HasIO m => List1 (DPair SupportedGroup (\g => Pair (curve_group_to_s
             (target_hostname : String) -> Int -> EitherT String m ()
 tls_test' keypairs target_hostname port = do
   sock <- bimapEitherT (\err => "unable to create socket: " <+> show err) id
-    $ MkEitherT 
+    $ MkEitherT
     $ socket AF_INET Stream 0
 
   random <- liftM $ random_bytes _

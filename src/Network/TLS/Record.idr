@@ -49,7 +49,7 @@ fix_record (Right (Right (Left x)))  = (ApplicationData ** x)
 fix_record (Right (Right (Right x))) = (Alert ** x)
 
 XRecordWithVersion : Type
-XRecordWithVersion = Eithers 
+XRecordWithVersion = Eithers
   [ (TLSVersion, Record ChangeCipherSpec)
   , (TLSVersion, Record Handshake)
   , (TLSVersion, Record ApplicationData)
@@ -137,7 +137,7 @@ namespace Parsing
 
   export
   wrapper2 : (Cons (Posed Bits8) i, Monoid i) => {iv_size : Nat} -> {mac_size : Nat} -> Parserializer Bits8 i (SimpleError String) (RecordType, TLSVersion, Wrapper2 iv_size mac_size)
-  wrapper2 = 
-    record_type 
-    <*>> tls_version 
+  wrapper2 =
+    record_type
+    <*>> tls_version
     <*>> (mapEither (\x => maybe_to_either (from_application_data2 x) (msg "cannot parse wrapper")) to_application_data2 $ lengthed_list 2 token)
