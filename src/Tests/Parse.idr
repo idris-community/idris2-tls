@@ -1,9 +1,12 @@
 module Tests.Parse
 
+import Data.List
 import Utils.Misc
 import Utils.Bytes
+import Utils.Parser
 import Network.TLS.Parse.PEM
 import Network.TLS.Parse.DER
+import Network.TLS.Parsing
 import Data.String.Parser
 
 test_certificate : String
@@ -34,10 +37,44 @@ test_certificate =
   -----END CERTIFICATE-----
   """
 
+partial
 test_der : HasIO io => io ()
 test_der = do
   let Right (blob, _) = parse parse_pem_blob test_certificate
   | Left err => putStrLn err
   putStrLn "certificate"
-  putStrLn $ xxd blob.content
+  -- putStrLn $ xxd blob.content
+
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z blob.content) parse_asn1
+  | (Pure leftover _) => putStrLn $ "leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => putStrLn $ show err
+
+  let (Universal ** 16 ** sequence) = ok
+
+  {-
+  let Right ok = parse_tlvs blob.content 
+  | Left err => putStrLn err
+
+  let [ MkTLV (MkTag Universal 16) $  Left 
+        [ MkTLV (MkTag Universal 16) $ Left 
+          [ version
+          , serial_number
+          , algorithm
+          , issuer
+          , validity
+          , subject
+          , public_key
+          , extensions
+          ]
+        , MkTLV (MkTag Universal 16) $ Left 
+          [ signature_algorithm
+          , signature_algorithm_parameter
+          ]
+        , MkTLV (MkTag Universal 3) $ Right
+          signature_value 
+        ]       
+      ] = ok
+
+  putStrLn $ show issuer
+  -}
   putStrLn "ok"
