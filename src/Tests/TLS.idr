@@ -33,14 +33,14 @@ log = liftM . putStrLn
 
 read_record : HasIO m => Socket -> EitherT String m (List Bits8)
 read_record sock = MkEitherT $ do
-  Just b_header <- recv_bytes sock 5
-  | Nothing => pure $ Left "recv_byte (record header / alert) failed"
+  Right b_header <- recv_bytes sock 5
+  | Left code => pure $ Left $ "recv_byte (record header / alert) failed with code " <+> show code
   let (Pure [] (Right (_, TLS12, len))) =
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => pure $ Left $ "ALERT: " <+> show x
   | _ => pure $ Left $ "unable to parse header: " <+> xxd b_header
-  Just b_body <- recv_bytes sock (cast len)
-  | Nothing => pure $ Left "recv_byte (record body) failed"
+  Right b_body <- recv_bytes sock (cast len)
+  | Left code => pure $ Left $ "recv_byte (record body) failed with code " <+> show code
   case length b_body == cast len of
     False =>
       pure
