@@ -1,6 +1,9 @@
 # idris2-tls
 A portable idris2 implementation of TLS 1.2 and TLS 1.3 protocol.
 
+# Compiler version
+The project currently targets Idris2 compiler after the commit [a09c508](https://github.com/idris-lang/Idris2/commit/a09c5082c5aea25a6d3643f523efdf8fa8efb2ae).
+
 # Goal
 This library aims to provide a TLS implementation in Idris that supports communication with most modern websites and provide reasonable performance.
 Not meant for production. Read the notes on security.
