@@ -42,6 +42,13 @@ tls_test target_hostname port = do
     putStrLn "response"
     putStrLn $ ascii_to_string output
 
+    -- read data
+    (True # (output # handle)) <- read handle 100
+    | (False # (error # ())) => putStrLn error
+
+    putStrLn "response"
+    putStrLn $ ascii_to_string output
+
     -- close handle
     close handle
     putStrLn "ok"
