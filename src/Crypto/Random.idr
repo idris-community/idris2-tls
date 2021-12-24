@@ -115,7 +115,7 @@ public export
 is_extremely_likely_prime : MonadRandom m => Integer -> m Bool
 is_extremely_likely_prime p =
   if p < 2 then pure False
-    else if p < 4 then pure True
+    else if (p < 4) || (p `elem` some_primes) then pure True
       else is_extremely_likely_prime' 64 p
 
 generate_big_odd_number : MonadRandom m => Nat -> m Integer
