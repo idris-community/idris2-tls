@@ -25,12 +25,17 @@ TLS 1.2:
 - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
 
-The library currently supports the following groups for key exchange:
+The library currently supports the following groups for key exchange during TLS handshake:
 - X25519
-- X448
 - SECP256r1
 - SECP384r1
+
+The following groups are implemented, but not used in the linear TLS handle abstraction.
+- X448
 - SECP521r1
+
+If you want to use these groups for key exchange, you would need to use the lower level TLS state abstraction. An
+example of how it would be done is in [TLS.idr](src/Tests/TLS.idr).
 
 Since most modern websites support key exchange with elliptic curves (and I can't figure out how RSA parameters are encoded), 
 RSA key exchange is not supported, nor do we consider implementing it by ourselves anytime soon.
