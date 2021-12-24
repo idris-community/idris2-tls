@@ -129,16 +129,16 @@ EncryptFunction : Type -> Type
 EncryptFunction state = state -> List Bits8 -> (state, List Bits8)
 
 tlshandle_read : {version : _} -> LinearIO io => (wanted : Nat) -> (1 _ : TLSHandle version t_ok t_closed) -> DecryptFunction (tls_version_to_state_type version) -> L1 io (Res Bool $ ReadHack (TLSHandle version t_ok t_closed) (Res String (const t_closed)))
-tlshandle_read wanted (MkTLSHandle handle state buffer) decrypt = do
-  (True # (b_record # handle)) <- read_record handle
-  | (False # other) => pure1 (False # other)
-  case decrypt state b_record of
-    Right (state, plaintext) =>
-      let (a, b) = splitAt wanted (buffer <+> plaintext)
-      in if (length a) == wanted
-            then pure1 (True # (a # MkTLSHandle handle state b))
-            else tlshandle_read wanted (MkTLSHandle handle state a) decrypt
-    Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
+tlshandle_read wanted (MkTLSHandle handle state buffer) decrypt =
+  let (a, b) = splitAt wanted buffer
+  in if (length a) == wanted
+        then pure1 (True # (a # MkTLSHandle handle state b))
+        else do
+          (True # (b_record # handle)) <- read_record handle
+          | (False # other) => pure1 (False # other)
+          case decrypt state b_record of
+            Right (state, plaintext) => tlshandle_read wanted (MkTLSHandle handle state $ buffer <+> plaintext) decrypt
+            Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
 
 tlshandle_write : {tls_version : TLSVersion} -> LinearIO io => List (List Bits8) -> (1 _ : TLSHandle tls_version t_ok t_closed) -> EncryptFunction (tls_version_to_state_type tls_version) -> L1 io (Res Bool $ WriteHack (TLSHandle tls_version t_ok t_closed) (Res String (const t_closed)))
 tlshandle_write [] sock encrypt = pure1 (True # sock)
