@@ -37,10 +37,45 @@ test_certificate =
   -----END CERTIFICATE-----
   """
 
+test_certificate2 : String
+test_certificate2 =
+  """
+  -----BEGIN CERTIFICATE-----
+  MIIFKDCCBM+gAwIBAgIQAdIfyDzGygOhDxOVwqcmHDAKBggqhkjOPQQDAjBKMQsw
+  CQYDVQQGEwJVUzEZMBcGA1UEChMQQ2xvdWRmbGFyZSwgSW5jLjEgMB4GA1UEAxMX
+  Q2xvdWRmbGFyZSBJbmMgRUNDIENBLTMwHhcNMjEwOTE4MDAwMDAwWhcNMjIwOTE3
+  MjM1OTU5WjByMQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQG
+  A1UEBxMNU2FuIEZyYW5jaXNjbzEZMBcGA1UEChMQQ2xvdWRmbGFyZSwgSW5jLjEb
+  MBkGA1UEAxMSd3d3LmNsb3VkZmxhcmUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0D
+  AQcDQgAE4oAICmiZSBhltLFYAuI14RPj9CXN1D0bCFvGl8fJ74BDOoKKE7MPn6uK
+  Y88Jwmc4a5nGWnykGd6eL0E1NSOFHqOCA20wggNpMB8GA1UdIwQYMBaAFKXON+rr
+  sHUOlGeItEX62SQQh5YfMB0GA1UdDgQWBBSATUpCMq4Jj1EHS6jU1Haou0GwMTAz
+  BgNVHREELDAqghQqLnd3dy5jbG91ZGZsYXJlLmNvbYISd3d3LmNsb3VkZmxhcmUu
+  Y29tMA4GA1UdDwEB/wQEAwIHgDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUH
+  AwIwewYDVR0fBHQwcjA3oDWgM4YxaHR0cDovL2NybDMuZGlnaWNlcnQuY29tL0Ns
+  b3VkZmxhcmVJbmNFQ0NDQS0zLmNybDA3oDWgM4YxaHR0cDovL2NybDQuZGlnaWNl
+  cnQuY29tL0Nsb3VkZmxhcmVJbmNFQ0NDQS0zLmNybDA+BgNVHSAENzA1MDMGBmeB
+  DAECAjApMCcGCCsGAQUFBwIBFhtodHRwOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMw
+  dgYIKwYBBQUHAQEEajBoMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2Vy
+  dC5jb20wQAYIKwYBBQUHMAKGNGh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9D
+  bG91ZGZsYXJlSW5jRUNDQ0EtMy5jcnQwDAYDVR0TAQH/BAIwADCCAX4GCisGAQQB
+  1nkCBAIEggFuBIIBagFoAHYAKXm+8J45OSHwVnOfY6V35b5XfZxgCvj5TV0mXCVd
+  x4QAAAF79j4m0AAABAMARzBFAiEAvKDJ5n/u7CgYVtco9JCPRbZJq/z82l9HFlZA
+  u+xCmkcCIDI25qHABDHpxIf6Y6Vyzfbx6YqtXbH9qaDcGWrU7Gq+AHYAUaOw9f0B
+  eZxWbbg3eI8MpHrMGyfL956IQpoN/tSLBeUAAAF79j4nPgAABAMARzBFAiBTDKQr
+  x0RKDWbCh9TzLUERGevPkPYMna4J6Tx9ar1dIQIhALQ0UM+WOHzDM59V454jiTKE
+  yEiML9y/X9BMkI/+YdlrAHYAQcjKsd8iRkoQxqE6CUKHXk4xixsD6+tLx2jwkGKW
+  BvYAAAF79j4nEgAABAMARzBFAiEA7SA5gPLY4H484JBw4CKagi6S/c3aZJV/tBWj
+  yuNBS3cCIG8tZ6o7tbPO6xnlH4uqOFv8SmpLLe1UQNDKPxzsw6BSMAoGCCqGSM49
+  BAMCA0cAMEQCIGhqV3zVr73qOPWtWrAM9Rws7JtjI63UlTJHofnjxiabAiAiMGF7
+  IF0SAGLGP8LXoFc913Pe30/OqeK0MI+LgAhcPw==
+  -----END CERTIFICATE-----
+  """
+
 partial
 test_der : HasIO io => io ()
 test_der = do
-  let Right (blob, _) = parse parse_pem_blob test_certificate
+  let Right (blob, _) = parse parse_pem_blob test_certificate2
   | Left err => putStrLn err
   putStrLn "certificate"
   -- putStrLn $ xxd blob.content
@@ -49,32 +84,27 @@ test_der = do
   | (Pure leftover _) => putStrLn $ "leftover: " <+> (xxd $ map get leftover)
   | (Fail err) => putStrLn $ show err
 
-  let (Universal ** 16 ** sequence) = ok
+  let (Universal ** 16 ** Sequence
+        [ (Universal ** 16 ** Sequence
+          ( (ContextSpecific ** 0 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal version) ])
+          :: (Universal ** 2 ** IntVal serial_number)
+          :: (Universal ** 16 ** Sequence ((Universal ** 6 ** crt_signature_algorithm) :: crt_signature_parameter))
+          :: (Universal ** 16 ** Sequence issuer)
+          :: (Universal ** 16 ** Sequence
+              [ valid_not_before
+              , valid_not_after
+              ])
+          :: (Universal ** 16 ** Sequence subject)
+          :: (Universal ** 16 ** Sequence
+              [ (Universal ** 16 ** Sequence ((Universal ** 6 ** tbs_signature_algorithm) :: tbs_signature_parameter))
+              , (Universal ** 3 ** Bitstring tbs_subject_public_key)
+              ])
+          :: optional_fields
+          ))
+        , (Universal ** 16 ** Sequence ((Universal ** 6 ** signature_algorithm) :: signature_parameter))
+        , (Universal ** 3 ** Bitstring signature_value)
+        ]
+      ) = ok
 
-  {-
-  let Right ok = parse_tlvs blob.content 
-  | Left err => putStrLn err
-
-  let [ MkTLV (MkTag Universal 16) $  Left 
-        [ MkTLV (MkTag Universal 16) $ Left 
-          [ version
-          , serial_number
-          , algorithm
-          , issuer
-          , validity
-          , subject
-          , public_key
-          , extensions
-          ]
-        , MkTLV (MkTag Universal 16) $ Left 
-          [ signature_algorithm
-          , signature_algorithm_parameter
-          ]
-        , MkTLV (MkTag Universal 3) $ Right
-          signature_value 
-        ]       
-      ] = ok
-
-  putStrLn $ show issuer
-  -}
+  putStrLn $ show serial_number
   putStrLn "ok"

@@ -168,8 +168,12 @@ parse_oid (S n) = do
   nodes <- toList <$> count n p_get
   pure $ decode_oid_nodes first_node nodes
 
+public export
+ASN1Token : Type
+ASN1Token = (t ** n ** ASN1 t n)
+
 export
-parse_asn1 : (Monoid i, Cons (Posed Bits8) i) => Parser i (SimpleError String) (t ** n ** ASN1 t n)
+parse_asn1 : (Monoid i, Cons (Posed Bits8) i) => Parser i (SimpleError String) ASN1Token
 parse_asn1 = do
   tag' <- parse_tag_id
   len <- parse_length

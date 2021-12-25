@@ -4,7 +4,13 @@ import Data.List
 import Data.Vect
 import Data.Bits
 import Utils.Misc
+import Utils.Bytes
+import Crypto.Prime
 import Crypto.Random
+import Data.Nat
+import Crypto.Hash
+import Data.List1
+import Data.Fin
 
 data PublicKey : Type where
   MkPublicKey : (n : Integer) -> (e : Integer) -> PublicKey
@@ -79,3 +85,44 @@ rsa_sign (MkSecretKey n e d) m = pow_mod m d n
 public export
 rsa_sign_extract_hash : PublicKey -> Integer -> Integer
 rsa_sign_extract_hash (MkPublicKey n e) s = pow_mod s e n
+
+public export
+os2ip : Foldable t => t Bits8 -> Integer
+os2ip = be_to_integer
+
+public export
+i2osp : Nat -> Integer -> Maybe (List Bits8)
+i2osp b_len x =
+  let mask = (shiftL 1 (8 * b_len)) - 1
+      x' = x .&. mask
+  in (guard $ x == x') $> (toList $ integer_to_be b_len x)
+
+public export
+rsavp1 : PublicKey -> Integer -> Maybe Integer
+rsavp1 pk@(MkPublicKey n e) s = guard (s > 0 && s < (n - 1)) $> rsa_encrypt pk s
+
+public export
+emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List Bits8 -> Nat -> Maybe ()
+emsa_pss_verify sLen mHash em emBits = do
+  let emLen = divCeilNZ emBits 8 SIsNonZero
+  let hLen = digest_nbyte {algo=algo}
+  -- 3. If emLen < hLen + sLen + 2, output "inconsistent" and stop.
+  guard (emLen >= hLen + sLen + 2)
+  -- 4. If the rightmost octet of EM does not have hexadecimal value 0xbc, output "inconsistent" and stop.
+  fromList em >>= (\x => guard $ last x == the Bits8 0xbc)
+  -- 5. Let maskedDB be the leftmost emLen - hLen - 1 octets of EM, and let H be the next hLen octets.
+  let maskedDBLen = pred $ minus emLen hLen
+  let (maskedDB@(x :: _), h) = splitAt maskedDBLen em
+  | _ => Nothing
+  -- 6. If the leftmost 8emLen - emBits bits of the leftmost octet in maskedDB are not all equal to zero, output "inconsistent" and stop.
+  let h = take hLen h
+  let emMaskL  = minus 8 (minus (emLen * 8) emBits)
+  guard $ 0 == shiftR' x emMaskL
+  -- 7. Let dbMask = MGF(H, emLen - hLen - 1).
+  let dbMask = ?mgf h maskedDBLen
+  -- 8. Let DB = maskedDB \xor dbMask.
+  let (db' :: dbs) = zipWith xor dbMask maskedDB
+  | _ => Nothing
+  -- 9. Set the leftmost 8emLen - emBits bits of the leftmost octet in DB to zero.
+  let db = (db' .&. (shiftR' (oneBits {a=Bits8}) emMaskL)) :: dbs
+  pure ()

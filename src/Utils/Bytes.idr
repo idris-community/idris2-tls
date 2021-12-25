@@ -136,3 +136,20 @@ string_to_ascii = map (cast . ord) . unpack
 export
 ascii_to_string : List Bits8 -> String
 ascii_to_string = pack . map cast
+
+maybe_a_a : Lazy a -> Maybe a -> a
+maybe_a_a a Nothing  = Force a
+maybe_a_a _ (Just a) = a
+
+export
+shiftL' : FiniteBits a => a -> Nat -> a
+shiftL' x i = maybe_a_a zeroBits $ do
+  i' <- natToFin i _
+  Just $ shiftL x (bitsToIndex i')
+
+export
+shiftR' : FiniteBits a => a -> Nat -> a
+shiftR' x i = maybe_a_a zeroBits $ do
+  i' <- natToFin i _
+  Just $ shiftR x (bitsToIndex i')
+
