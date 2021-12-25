@@ -163,8 +163,8 @@ sha256_update input (MkSha256 s) =
     Fraction _ 64 nblocks residue_nbyte prf = divMod (s.buffer_nbyte + length input) 64
     (blocks, residue) = splitAt (mult nblocks 64) (replace_vect (sym prf) (s.buffer ++ fromList input))
   in
-    MkSha256 $ record {buffer = residue, buffer_nbyte = _, buffer_nbyte_constraint = elemSmallerThanBound residue_nbyte }
-      ( foldl (\s_, block_ => record {hash_values $= sha256_compress block_, npassed_blocks $= S} s_) s (group nblocks 64 blocks) )
+    MkSha256 $ {buffer := residue, buffer_nbyte := _, buffer_nbyte_constraint := elemSmallerThanBound residue_nbyte }
+      ( foldl (\s_, block_ => {hash_values $= sha256_compress block_, npassed_blocks $= S} s_) s (group nblocks 64 blocks) )
 
 sha256_finalize : Sha256 -> Vect 32 Bits8
 sha256_finalize (MkSha256 s) =
@@ -253,8 +253,8 @@ sha512_update input (MkSha512 s) =
     Fraction _ 128 nblocks residue_nbyte prf = divMod (s.buffer_nbyte + length input) 128
     (blocks, residue) = splitAt (mult nblocks 128) (replace_vect (sym prf) (s.buffer ++ fromList input))
   in
-    MkSha512 $ record {buffer = residue, buffer_nbyte = _, buffer_nbyte_constraint = elemSmallerThanBound residue_nbyte }
-      ( foldl (\s_, block_ => record {hash_values $= sha512_compress block_, npassed_blocks $= S} s_) s (group nblocks 128 blocks) )
+    MkSha512 $ {buffer := residue, buffer_nbyte := _, buffer_nbyte_constraint := elemSmallerThanBound residue_nbyte }
+      ( foldl (\s_, block_ => {hash_values $= sha512_compress block_, npassed_blocks $= S} s_) s (group nblocks 128 blocks) )
 
 sha512_finalize : Sha512 -> Vect 64 Bits8
 sha512_finalize (MkSha512 s) =
