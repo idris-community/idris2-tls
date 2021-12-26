@@ -11,6 +11,7 @@ import Data.Vect
 import Data.Nat.Factor
 import Data.Nat.Order.Properties
 import Utils.Misc
+import Decidable.Equality
 
 export
 to_be : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 prf : (bitSize {a}) = n * 8} -> a -> Vect n Bits8
@@ -43,23 +44,6 @@ export
 set_bit_to : Bits a => Bool -> Index {a} -> a -> a
 set_bit_to False _ x = x
 set_bit_to True pos x = setBit x pos
-
-export
-rotate_right'' : FiniteBits a => {auto prf : LTE 2 (bitSize {a})} -> Bool -> a -> a
-rotate_right'' carry x =
-  case @@ bitSize {a = a} of
-    (Z ** okay) => absurd $ replace {p = LTE 2} okay prf
-    (S bit_size ** okay) =>
-      set_bit_to carry (bitsToIndex $ subset_to_fin $ Element bit_size (replace {p = LTE (S bit_size)} (sym okay) (reflexive {x = S bit_size}))) $ shiftR x (bitsToIndex $ subset_to_fin $ Element 1 prf)
-
-export
-rotate_right' : FiniteBits a => {auto prf : LTE 2 (bitSize {a})} -> a -> a
-rotate_right' x = rotate_right'' {prf} (testBit x (bitsToIndex $ subset_to_fin $ Element 0 (lteSuccLeft prf))) x
-
-export
-rotate_right : FiniteBits a => {auto prf : LTE 2 (bitSize {a})} -> Nat -> a -> a
-rotate_right Z x = x
-rotate_right (S n) x = rotate_right {prf} n (rotate_right' {prf} x)
 
 export
 to_bools_be' : FiniteBits a => (n : Fin (S (bitSize {a}))) -> a -> Vect (finToNat n) Bool
@@ -153,3 +137,15 @@ shiftR' x i = maybe_a_a zeroBits $ do
   i' <- natToFin i _
   Just $ shiftR x (bitsToIndex i')
 
+fix_fin_type : (m = (S n)) -> Fin (S n) -> Fin m
+fix_fin_type prf x = rewrite prf in x
+
+public export
+rotl : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
+rotl FZ x = x
+rotl (FS i) x = (shiftL x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftR x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)
+
+public export
+rotr : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
+rotr FZ x = x
+rotr (FS i) x = (shiftR x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftL x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)

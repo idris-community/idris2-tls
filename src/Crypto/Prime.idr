@@ -33,8 +33,7 @@ even_component n = go Z (n-1)
 witness_loop : Integer -> Integer -> Nat -> Integer -> Bool
 witness_loop n a r d =
   let x = pow_mod a d n
-      alpha = (x == 1) || (x == n - 1)
-  in not $ (not alpha) && (go x n a (pred r) d)
+  in if (x == 1) || (x == n - 1) then True else not (go x n a (pred r) d)
   where
     go : Integer -> Integer -> Integer -> Nat -> Integer -> Bool
     go x n a Z d = True
