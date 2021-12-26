@@ -1,6 +1,5 @@
 module Network.TLS.Core
 
-import Crypto.AES
 import Crypto.Curve
 import Crypto.Curve.Weierstrass
 import Crypto.Curve.XCurves

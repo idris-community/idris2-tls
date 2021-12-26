@@ -11,7 +11,6 @@ import Data.Vect
 import Data.Nat.Factor
 import Data.Nat.Order.Properties
 import Utils.Misc
-import Decidable.Equality
 
 export
 to_be : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 prf : (bitSize {a}) = n * 8} -> a -> Vect n Bits8
@@ -140,12 +139,20 @@ shiftR' x i = maybe_a_a zeroBits $ do
 fix_fin_type : (m = (S n)) -> Fin (S n) -> Fin m
 fix_fin_type prf x = rewrite prf in x
 
-public export
+export
 rotl : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
 rotl FZ x = x
 rotl (FS i) x = (shiftL x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftR x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)
 
-public export
+export
 rotr : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
 rotr FZ x = x
 rotr (FS i) x = (shiftR x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftL x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)
+
+export
+b8_to_fin : Bits8 -> Fin 256
+b8_to_fin x =
+  case natToFin (cast x) _ of
+    Just y => y
+    Nothing => assert_total $ idris_crash "b8_to_fin is not working"
+
