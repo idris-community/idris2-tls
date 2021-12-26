@@ -4,7 +4,9 @@ import Control.Monad.State
 import Crypto.RSA
 import Crypto.Random
 import Crypto.Random.C
-import Crypto.AES
+import Crypto.AES.Common
+import Crypto.AES.Small
+import Crypto.AES.Big
 import Data.Vect
 import Utils.Bytes
 import Utils.Misc
@@ -42,12 +44,24 @@ test_aes_plaintext =
 
 test_aes_128_ciphertext : Vect 16 Bits8
 test_aes_128_ciphertext =
-  concat $ encrypt_block AES128 (group _ _ test_aes_128_key) (group _ _ test_aes_plaintext)
+  Small.encrypt_block AES128 test_aes_128_key test_aes_plaintext
 
 test_aes_192_ciphertext : Vect 16 Bits8
 test_aes_192_ciphertext =
-  concat $ encrypt_block AES192 (group _ _ test_aes_192_key) (group _ _ test_aes_plaintext)
+  Small.encrypt_block AES192 test_aes_192_key test_aes_plaintext
 
 test_aes_256_ciphertext : Vect 16 Bits8
 test_aes_256_ciphertext =
-  concat $ encrypt_block AES256 (group _ _ test_aes_256_key) (group _ _ test_aes_plaintext)
+  Small.encrypt_block AES256 test_aes_256_key test_aes_plaintext
+
+test_aes_big_128_ciphertext : Vect 16 Bits8
+test_aes_big_128_ciphertext =
+  Big.encrypt_block AES128 test_aes_128_key test_aes_plaintext
+
+test_aes_big_192_ciphertext : Vect 16 Bits8
+test_aes_big_192_ciphertext =
+  Big.encrypt_block AES192 test_aes_192_key test_aes_plaintext
+
+test_aes_big_256_ciphertext : Vect 16 Bits8
+test_aes_big_256_ciphertext =
+  Big.encrypt_block AES256 test_aes_256_key test_aes_plaintext

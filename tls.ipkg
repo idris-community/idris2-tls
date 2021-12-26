@@ -15,8 +15,7 @@ brief = "A portable idris2 implementation of TLS"
 
 depends = contrib, network
 
-modules = Crypto.AES,
-          Crypto.ChaCha,
+modules = Crypto.ChaCha,
           Crypto.GF128,
           Crypto.Curve,
           Crypto.Curve.Weierstrass,
@@ -28,6 +27,9 @@ modules = Crypto.AES,
           Crypto.Hash.Interfaces,
           Crypto.Hash.SHA2,
           Crypto.RSA,
+          Crypto.AES.Big,
+          Crypto.AES.Small,
+          Crypto.AES.Common,
           Crypto.Random.C,
           Crypto.Random.JS,
           Network.TLS,
