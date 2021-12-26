@@ -4,6 +4,7 @@ import Control.Monad.State
 import Data.Bits
 import Data.DPair
 import Data.Fin
+import Data.Fin.Extra
 import Data.Nat.Order.Properties
 import Data.Vect
 import Utils.Bytes
@@ -23,28 +24,23 @@ constants : Vect 4 Bits32
 constants = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574] -- ['expa', 'nd 3', '2-by', 'te k']
 
 public export
-rotl : Subset Nat (`LT` 32) -> Bits32 -> Bits32
-rotl b'@(Element Z p) a = a
-rotl b'@(Element (S b) p) a = shiftL a (subset_to_fin b') .|. shiftR a (subset_to_fin $ Element (minus 31 b) $ LTESucc (minusLTE b 31))
-
-public export
 quarter_rotate : Fin 16 -> Fin 16 -> Fin 16 -> Fin 16 -> State ChaChaState ()
 quarter_rotate a b c d = do
   modify (\s => updateAt a (+ index b s) s)
   modify (\s => updateAt d (`xor` index a s) s)
-  modify (\s => updateAt d (rotl $ Element 16 (lteAddRight _)) s)
+  modify (\s => updateAt d (rotl 16) s)
 
   modify (\s => updateAt c (+ index d s) s)
   modify (\s => updateAt b (`xor` index c s) s)
-  modify (\s => updateAt b (rotl $ Element 12 (lteAddRight _)) s)
+  modify (\s => updateAt b (rotl 12) s)
 
   modify (\s => updateAt a (+ index b s) s)
   modify (\s => updateAt d (`xor` index a s) s)
-  modify (\s => updateAt d (rotl $ Element 8 (lteAddRight _)) s)
+  modify (\s => updateAt d (rotl 8) s)
 
   modify (\s => updateAt c (+ index d s) s)
   modify (\s => updateAt b (`xor` index c s) s)
-  modify (\s => updateAt b (rotl $ Element 7 (lteAddRight _)) s)
+  modify (\s => updateAt b (rotl 7) s)
 
 public export
 double_rotate : State ChaChaState ()

@@ -135,8 +135,8 @@ sha256_extend_message xs = prepend (toList xs) $ go xs
   go xs =
     let
       [wi_16, wi_15, wi_7, wi_2] = the (Vect 4 _) $ map (flip index xs) [0, 1, 9, 14]
-      s0 = rotate_right 7  wi_15 `xor` rotate_right 18 wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 3  $ lteAddRight _)
-      s1 = rotate_right 17 wi_2 ` xor` rotate_right 19 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 10 $ lteAddRight _)
+      s0 = rotr 7  wi_15 `xor` rotr 18 wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 3  $ lteAddRight _)
+      s1 = rotr 17 wi_2 ` xor` rotr 19 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 10 $ lteAddRight _)
       w = wi_16 + s0 + wi_7 + s1
     in
       w :: go (tail xs `snoc` w)
@@ -148,10 +148,10 @@ sha256_compress block hash_values = zipWith (+) hash_values $ go sha256_round_co
   go [] _ h = h
   go (k :: ks) (w :: ws) [a,b,c,d,e,f,g,h] =
     let
-      s1 = rotate_right 6 e `xor` rotate_right 11 e `xor` rotate_right 25 e
+      s1 = rotr 6 e `xor` rotr 11 e `xor` rotr 25 e
       ch = (e .&. f) `xor` (complement e .&. g)
       temp1 = h + s1 + ch + k + w
-      s0 = rotate_right 2 a `xor` rotate_right 13 a `xor` rotate_right 22 a
+      s0 = rotr 2 a `xor` rotr 13 a `xor` rotr 22 a
       maj = (a .&. b) `xor` (a .&. c) `xor` (b .&. c)
       temp2 = s0 + maj
     in
@@ -225,8 +225,8 @@ sha512_extend_message xs = prepend (toList xs) $ go xs
   go xs =
     let
       [wi_16, wi_15, wi_7, wi_2] = the (Vect 4 _) $ map (flip index xs) [0, 1, 9, 14]
-      s0 = rotate_right 1  wi_15 `xor` rotate_right 8  wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 7 $ lteAddRight _)
-      s1 = rotate_right 19 wi_2  `xor` rotate_right 61 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 6 $ lteAddRight _)
+      s0 = rotr 1  wi_15 `xor` rotr 8  wi_15 `xor` shiftR wi_15 (subset_to_fin $ Element 7 $ lteAddRight _)
+      s1 = rotr 19 wi_2  `xor` rotr 61 wi_2  `xor` shiftR wi_2  (subset_to_fin $ Element 6 $ lteAddRight _)
       w = wi_16 + s0 + wi_7 + s1
     in
       w :: go (tail xs `snoc` w)
@@ -238,10 +238,10 @@ sha512_compress block hash_values = zipWith (+) hash_values $ go sha512_round_co
   go [] _ h = h
   go (k :: ks) (w :: ws) [a,b,c,d,e,f,g,h] =
     let
-      s1 = rotate_right 14 e `xor` rotate_right 18 e `xor` rotate_right 41 e
+      s1 = rotr 14 e `xor` rotr 18 e `xor` rotr 41 e
       ch = (e .&. f) `xor` (complement e .&. g)
       temp1 = h + s1 + ch + k + w
-      s0 = rotate_right 28 a `xor` rotate_right 34 a `xor` rotate_right 39 a
+      s0 = rotr 28 a `xor` rotr 34 a `xor` rotr 39 a
       maj = (a .&. b) `xor` (a .&. c) `xor` (b .&. c)
       temp2 = s0 + maj
     in
