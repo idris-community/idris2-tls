@@ -5,9 +5,11 @@ import Data.DPair
 import Data.Fin
 import Data.List
 import Data.Nat
+import Data.Nat.Division
 import Data.Stream
 import Data.Vect
 import Data.List1
+import Data.Fin.Extra
 import Syntax.WithProof
 
 public export
@@ -278,3 +280,16 @@ splitAt n s = (take n s, drop n s)
 public export
 zeros : {n : Nat} -> Vect n Bits8
 zeros = map (const 0) Fin.range
+
+public export
+splitLastAt1 : (n : Nat) -> List a -> Maybe (List1 a, Vect n a)
+splitLastAt1 n v = do
+  let m = minus (length v) n
+  let (a, b) = splitAt m v
+  a' <- fromList a
+  b' <- exactLength n $ fromList b
+  pure (a', b')
+
+public export
+modFinNZ : Nat -> (b : Nat) -> NonZero b -> Fin b
+modFinNZ a b prf = let x = boundModNatNZ a b prf in natToFinLTE (modNatNZ a b prf) x

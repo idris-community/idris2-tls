@@ -11,6 +11,9 @@ import Data.Nat
 import Crypto.Hash
 import Data.List1
 import Data.Fin
+import Data.Stream
+import Data.Fin.Extra
+import Crypto.Hash.OID
 
 data PublicKey : Type where
   MkPublicKey : (n : Integer) -> (e : Integer) -> PublicKey
@@ -37,7 +40,7 @@ generate_prime_part e bits = do
   p <- generate_prime bits
   if (p `mod` e) == 1 then generate_prime_part e bits else pure p
 
-public export
+export
 generate_key_pair : MonadRandom m => Nat -> m (PublicKey, SecretKey)
 generate_key_pair k = do
   let e = 65537
@@ -45,7 +48,7 @@ generate_key_pair k = do
   q <- generate_prime_part e (minus k (k `div` 2))
   pure $ generate_key_pair_with_e p q e
 
-public export
+export
 rsa_encrypt : PublicKey -> Integer -> Integer
 rsa_encrypt (MkPublicKey n e) m = pow_mod m e n
 
@@ -68,61 +71,74 @@ generate_blinder n = do
 rsa_decrypt_blinded' : SecretKey -> Integer -> Integer -> Integer
 rsa_decrypt_blinded' k@(MkSecretKey n e d) r c = mask_off k r $ rsa_decrypt' k $ mask_on k r c
 
-public export
+export
 rsa_decrypt_blinded : MonadRandom m => SecretKey -> Integer -> m Integer
 rsa_decrypt_blinded k@(MkSecretKey n e d) c = do
   r <- generate_blinder n
   pure $ rsa_decrypt_blinded' k r c
 
-public export
+export
 rsa_unsafe_decrypt : SecretKey -> Integer -> Integer
 rsa_unsafe_decrypt = rsa_decrypt'
 
-public export
+export
 rsa_sign : SecretKey -> Integer -> Integer
 rsa_sign (MkSecretKey n e d) m = pow_mod m d n
 
-public export
+export
 rsa_sign_extract_hash : PublicKey -> Integer -> Integer
 rsa_sign_extract_hash (MkPublicKey n e) s = pow_mod s e n
 
-public export
+-- RFC 8017
+
+export
 os2ip : Foldable t => t Bits8 -> Integer
 os2ip = be_to_integer
 
-public export
+export
 i2osp : Nat -> Integer -> Maybe (List Bits8)
 i2osp b_len x =
   let mask = (shiftL 1 (8 * b_len)) - 1
       x' = x .&. mask
   in (guard $ x == x') $> (toList $ integer_to_be b_len x)
 
-public export
+export
 rsavp1 : PublicKey -> Integer -> Maybe Integer
 rsavp1 pk@(MkPublicKey n e) s = guard (s > 0 && s < (n - 1)) $> rsa_encrypt pk s
 
-public export
-emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List Bits8 -> Nat -> Maybe ()
-emsa_pss_verify sLen mHash em emBits = do
+record PSSEncodedMessage n where
+  hash_digest : Vect n Bits8
+  db : List Bits8
+
+mgf1 : {algo : _} -> Hash algo => (n : Nat) -> List Bits8 -> Vect n Bits8
+mgf1 n seed = take n $ stream_concat $ map (\x => hash algo (seed <+> (toList $ integer_to_be 4 $ cast x))) nats
+
+export
+emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
+emsa_pss_verify sLen message em emBits = do
+  let mHash = hash algo message
   let emLen = divCeilNZ emBits 8 SIsNonZero
-  let hLen = digest_nbyte {algo=algo}
-  -- 3. If emLen < hLen + sLen + 2, output "inconsistent" and stop.
-  guard (emLen >= hLen + sLen + 2)
-  -- 4. If the rightmost octet of EM does not have hexadecimal value 0xbc, output "inconsistent" and stop.
-  fromList em >>= (\x => guard $ last x == the Bits8 0xbc)
-  -- 5. Let maskedDB be the leftmost emLen - hLen - 1 octets of EM, and let H be the next hLen octets.
-  let maskedDBLen = pred $ minus emLen hLen
-  let (maskedDB@(x :: _), h) = splitAt maskedDBLen em
-  | _ => Nothing
-  -- 6. If the leftmost 8emLen - emBits bits of the leftmost octet in maskedDB are not all equal to zero, output "inconsistent" and stop.
-  let h = take hLen h
-  let emMaskL  = minus 8 (minus (emLen * 8) emBits)
-  guard $ 0 == shiftR' x emMaskL
-  -- 7. Let dbMask = MGF(H, emLen - hLen - 1).
-  let dbMask = ?mgf h maskedDBLen
-  -- 8. Let DB = maskedDB \xor dbMask.
-  let (db' :: dbs) = zipWith xor dbMask maskedDB
-  | _ => Nothing
-  -- 9. Set the leftmost 8emLen - emBits bits of the leftmost octet in DB to zero.
-  let db = (db' .&. (shiftR' (oneBits {a=Bits8}) emMaskL)) :: dbs
-  pure ()
+  let (em, 0xbc) = uncons1 em
+  | _ => Nothing -- Invalid padding
+  (maskedDB, digest) <- splitLastAt1 (digest_nbyte {algo}) em
+  -- check padding
+  guard $ check_padding (modFinNZ emBits 8 SIsNonZero) (head maskedDB)
+  let db = zipWith xor (toList maskedDB) (toList $ mgf1 {algo} (length maskedDB) (toList digest))
+  (padding, salt) <- splitLastAt1 sLen db
+  -- check padding
+  guard (1 == be_to_integer padding)
+  -- check salt length
+  guard $ digest `s_eq` hash algo ([0, 0, 0, 0, 0, 0, 0, 0] <+> toList mHash <+> toList salt)
+  where
+    check_padding : Fin 8 -> Bits8 -> Bool
+    check_padding FZ _ = True
+    check_padding n b = 0 == shiftR b n
+
+export
+emsa_pkcs1_v15_encode : {algo : _} -> RegisteredHash algo => List Bits8 -> Nat -> Maybe (List Bits8)
+emsa_pkcs1_v15_encode message emLen = do
+  let h = hashWithHeader {algo} message
+  let paddingLen = (emLen `minus` der_digest_n_byte {algo}) `minus` 3
+  guard (paddingLen >= 8)
+  let padding = replicate paddingLen 0xff
+  pure $ [ 0x00, 0x01 ] <+> padding <+> [ 0x00 ] <+> toList h
