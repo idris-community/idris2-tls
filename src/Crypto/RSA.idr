@@ -113,7 +113,12 @@ record PSSEncodedMessage n where
 mgf1 : {algo : _} -> Hash algo => (n : Nat) -> List Bits8 -> Vect n Bits8
 mgf1 n seed = take n $ stream_concat $ map (\x => hash algo (seed <+> (toList $ integer_to_be 4 $ cast x))) nats
 
-export
+modulus_bits : PublicKey -> Nat
+modulus_bits (MkPublicKey n _) = if n > 0 then go Z $ iterate (\y => shiftR y 1) n else 0
+  where
+    go : Nat -> Stream Integer -> Nat
+    go n (x :: xs) = if x == 0 then n else go (S n) xs
+
 emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
 emsa_pss_verify sLen message em emBits = do
   let mHash = hash algo message
@@ -135,6 +140,15 @@ emsa_pss_verify sLen message em emBits = do
     check_padding n b = 0 == shiftR b n
 
 export
+rsassa_pss_verify : {algo : _} -> Hash algo => PublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pss_verify pk message signature = isJust $ do
+  let modBits = modulus_bits pk
+  let s = os2ip signature
+  m <- rsavp1 pk s
+  let emLen = divCeilNZ (pred modBits) 8 SIsNonZero
+  em <- i2osp emLen m >>= fromList
+  emsa_pss_verify {algo} (digest_nbyte {algo}) message em (pred modBits)
+
 emsa_pkcs1_v15_encode : {algo : _} -> RegisteredHash algo => List Bits8 -> Nat -> Maybe (List Bits8)
 emsa_pkcs1_v15_encode message emLen = do
   let h = hashWithHeader {algo} message
@@ -142,3 +156,16 @@ emsa_pkcs1_v15_encode message emLen = do
   guard (paddingLen >= 8)
   let padding = replicate paddingLen 0xff
   pure $ [ 0x00, 0x01 ] <+> padding <+> [ 0x00 ] <+> toList h
+
+export
+rsassa_pkcs1_v15_verify : {algo : _} -> RegisteredHash algo => PublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pkcs1_v15_verify pk message signature = isJust $ do
+  let k = divCeilNZ (modulus_bits pk) 8 SIsNonZero
+  guard (k == length signature)
+
+  let s = os2ip signature
+  m <- rsavp1 pk s
+  em <- i2osp k m
+  
+  em' <- emsa_pkcs1_v15_encode {algo} message k
+  guard (em `s_eq'` em')

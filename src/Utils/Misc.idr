@@ -61,15 +61,11 @@ mod' n m = (m + n `mod` m) `mod` m
 
 public export
 s_eq : (Bits b, Eq b) => Vect n b -> Vect n b -> Bool
-s_eq a b = (== zeroBits) $ foldr (.|.) zeroBits $ zipWith xor a b
+s_eq a b = (zeroBits ==) $ foldr (.|.) zeroBits $ zipWith xor a b
 
 public export
 s_eq' : (Bits b, Eq b) => List b -> List b -> Bool
-s_eq' a b = isJust $ do
-  let l_a = length a
-  a' <- exactLength l_a $ fromList a
-  b' <- exactLength l_a $ fromList b
-  guard $ s_eq a' b'
+s_eq' a b = (length a == length b) `s_and` ((zeroBits ==) $ foldr (.|.) zeroBits $ zipWith xor a b)
 
 public export
 vect_zip_with : {n : Nat} -> {m : Nat} -> (a -> b -> c) -> Vect n a -> Vect m b -> Vect (minimum n m) c

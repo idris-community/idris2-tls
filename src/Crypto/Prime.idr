@@ -70,7 +70,7 @@ is_extremely_likely_prime p =
 generate_big_odd_number : MonadRandom m => Nat -> m Integer
 generate_big_odd_number k = do
   r <- next_integer (k `div` 8)
-  pure $ r .|. 1
+  pure $ r .|. setBit 1 k
 
 public export
 generate_prime : MonadRandom m => Nat -> m Integer
