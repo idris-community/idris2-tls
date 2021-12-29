@@ -15,24 +15,32 @@ import Data.Stream
 import Data.Fin.Extra
 import Crypto.Hash.OID
 
-data PublicKey : Type where
-  MkPublicKey : (n : Integer) -> (e : Integer) -> PublicKey
+export
+data RSAPublicKey : Type where
+  MkRSAPublicKey : (n : Integer) -> (e : Integer) -> RSAPublicKey
 
-data SecretKey : Type where
-  MkSecretKey : (n : Integer) -> (e : Integer) -> (d : Integer) -> SecretKey
+export
+data RSASecretKey : Type where
+  MkRSASecretKey : (n : Integer) -> (e : Integer) -> (d : Integer) -> RSASecretKey
+
+-- TODO: check if there are more constraints needed between n and e
+-- also maybe use a proof instead of masking the constructor in the future
+export
+mk_rsa_publickey : Integer -> Integer -> Maybe RSAPublicKey
+mk_rsa_publickey n e = guard (1 == gcd' n e) $> MkRSAPublicKey n e
 
 -- p q must be primes or the skinwalker will devour your offsprings
 -- p = genprime(k/2) until p mod e /= 1
 -- q = genprime(k-k/2) until q mod e /= 1
 -- e and (p-1)(q-1) should be coprimes
-generate_key_pair_with_e : Integer -> Integer -> Integer -> (PublicKey, SecretKey)
+generate_key_pair_with_e : Integer -> Integer -> Integer -> (RSAPublicKey, RSASecretKey)
 generate_key_pair_with_e p q e =
   let n = p * q
       d = inv_mul_mod e ((p-1)*(q-1))
-  in (MkPublicKey n e, MkSecretKey n e d)
+  in (MkRSAPublicKey n e, MkRSASecretKey n e d)
 
 -- p q must be primes or the skinwalker will devour your offsprings
-generate_key_pair' : Integer -> Integer -> (PublicKey, SecretKey)
+generate_key_pair' : Integer -> Integer -> (RSAPublicKey, RSASecretKey)
 generate_key_pair' p q = generate_key_pair_with_e p q 65537
 
 generate_prime_part : MonadRandom m => Integer -> Nat -> m Integer
@@ -41,7 +49,7 @@ generate_prime_part e bits = do
   if (p `mod` e) == 1 then generate_prime_part e bits else pure p
 
 export
-generate_key_pair : MonadRandom m => Nat -> m (PublicKey, SecretKey)
+generate_key_pair : MonadRandom m => Nat -> m (RSAPublicKey, RSASecretKey)
 generate_key_pair k = do
   let e = 65537
   p <- generate_prime_part e (k `div` 2)
@@ -49,18 +57,18 @@ generate_key_pair k = do
   pure $ generate_key_pair_with_e p q e
 
 export
-rsa_encrypt : PublicKey -> Integer -> Integer
-rsa_encrypt (MkPublicKey n e) m = pow_mod m e n
+rsa_encrypt : RSAPublicKey -> Integer -> Integer
+rsa_encrypt (MkRSAPublicKey n e) m = pow_mod m e n
 
 -- r and n should be coprimes or you die
-mask_on : SecretKey -> Integer -> Integer -> Integer
-mask_on (MkSecretKey n e d) r x = pow_mod (x * r) e n
+mask_on : RSASecretKey -> Integer -> Integer -> Integer
+mask_on (MkRSASecretKey n e d) r x = pow_mod (x * r) e n
 
-mask_off : SecretKey -> Integer -> Integer -> Integer
-mask_off (MkSecretKey n e d) r z = pow_mod (mul_mod (inv_mul_mod r n) z n) d n
+mask_off : RSASecretKey -> Integer -> Integer -> Integer
+mask_off (MkRSASecretKey n e d) r z = pow_mod (mul_mod (inv_mul_mod r n) z n) d n
 
-rsa_decrypt' : SecretKey -> Integer -> Integer
-rsa_decrypt' (MkSecretKey n e d) c = pow_mod c d n
+rsa_decrypt' : RSASecretKey -> Integer -> Integer
+rsa_decrypt' (MkRSASecretKey n e d) c = pow_mod c d n
 
 generate_blinder : MonadRandom m => Integer -> m Integer
 generate_blinder n = do
@@ -68,26 +76,26 @@ generate_blinder n = do
   if are_coprimes r n then pure r else generate_blinder n
 
 -- Timing attack resistant
-rsa_decrypt_blinded' : SecretKey -> Integer -> Integer -> Integer
-rsa_decrypt_blinded' k@(MkSecretKey n e d) r c = mask_off k r $ rsa_decrypt' k $ mask_on k r c
+rsa_decrypt_blinded' : RSASecretKey -> Integer -> Integer -> Integer
+rsa_decrypt_blinded' k@(MkRSASecretKey n e d) r c = mask_off k r $ rsa_decrypt' k $ mask_on k r c
 
 export
-rsa_decrypt_blinded : MonadRandom m => SecretKey -> Integer -> m Integer
-rsa_decrypt_blinded k@(MkSecretKey n e d) c = do
+rsa_decrypt_blinded : MonadRandom m => RSASecretKey -> Integer -> m Integer
+rsa_decrypt_blinded k@(MkRSASecretKey n e d) c = do
   r <- generate_blinder n
   pure $ rsa_decrypt_blinded' k r c
 
 export
-rsa_unsafe_decrypt : SecretKey -> Integer -> Integer
+rsa_unsafe_decrypt : RSASecretKey -> Integer -> Integer
 rsa_unsafe_decrypt = rsa_decrypt'
 
 export
-rsa_sign : SecretKey -> Integer -> Integer
-rsa_sign (MkSecretKey n e d) m = pow_mod m d n
+rsa_sign : RSASecretKey -> Integer -> Integer
+rsa_sign (MkRSASecretKey n e d) m = pow_mod m d n
 
 export
-rsa_sign_extract_hash : PublicKey -> Integer -> Integer
-rsa_sign_extract_hash (MkPublicKey n e) s = pow_mod s e n
+rsa_sign_extract_hash : RSAPublicKey -> Integer -> Integer
+rsa_sign_extract_hash (MkRSAPublicKey n e) s = pow_mod s e n
 
 -- RFC 8017
 
@@ -103,8 +111,8 @@ i2osp b_len x =
   in (guard $ x == x') $> (toList $ integer_to_be b_len x)
 
 export
-rsavp1 : PublicKey -> Integer -> Maybe Integer
-rsavp1 pk@(MkPublicKey n e) s = guard (s > 0 && s < (n - 1)) $> rsa_encrypt pk s
+rsavp1 : RSAPublicKey -> Integer -> Maybe Integer
+rsavp1 pk@(MkRSAPublicKey n e) s = guard (s > 0 && s < (n - 1)) $> rsa_encrypt pk s
 
 record PSSEncodedMessage n where
   hash_digest : Vect n Bits8
@@ -113,8 +121,8 @@ record PSSEncodedMessage n where
 mgf1 : {algo : _} -> Hash algo => (n : Nat) -> List Bits8 -> Vect n Bits8
 mgf1 n seed = take n $ stream_concat $ map (\x => hash algo (seed <+> (toList $ integer_to_be 4 $ cast x))) nats
 
-modulus_bits : PublicKey -> Nat
-modulus_bits (MkPublicKey n _) = if n > 0 then go Z $ iterate (\y => shiftR y 1) n else 0
+modulus_bits : RSAPublicKey -> Nat
+modulus_bits (MkRSAPublicKey n _) = if n > 0 then go Z $ iterate (\y => shiftR y 1) n else 0
   where
     go : Nat -> Stream Integer -> Nat
     go n (x :: xs) = if x == 0 then n else go (S n) xs
@@ -140,7 +148,7 @@ emsa_pss_verify sLen message em emBits = do
     check_padding n b = 0 == shiftR b n
 
 export
-rsassa_pss_verify : {algo : _} -> Hash algo => PublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pss_verify : {algo : _} -> Hash algo => RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
 rsassa_pss_verify pk message signature = isJust $ do
   let modBits = modulus_bits pk
   let s = os2ip signature
@@ -158,7 +166,7 @@ emsa_pkcs1_v15_encode message emLen = do
   pure $ [ 0x00, 0x01 ] <+> padding <+> [ 0x00 ] <+> toList h
 
 export
-rsassa_pkcs1_v15_verify : {algo : _} -> RegisteredHash algo => PublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pkcs1_v15_verify : {algo : _} -> RegisteredHash algo => RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
 rsassa_pkcs1_v15_verify pk message signature = isJust $ do
   let k = divCeilNZ (modulus_bits pk) 8 SIsNonZero
   guard (k == length signature)

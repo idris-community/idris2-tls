@@ -213,27 +213,60 @@ curve_group_to_element_type group = Element @{snd $ curve_group_to_type group}
 
 public export
 data SignatureAlgorithm : Type where
-  ECDSA_SECP256r1_SHA256 : SignatureAlgorithm
-  RSA_PSS_RSAE_SHA256    : SignatureAlgorithm
   RSA_PKCS1_SHA256       : SignatureAlgorithm
+  RSA_PKCS1_SHA384       : SignatureAlgorithm
+  RSA_PKCS1_SHA512       : SignatureAlgorithm
+
+  ECDSA_SECP256r1_SHA256 : SignatureAlgorithm
+  ECDSA_SECP384r1_SHA384 : SignatureAlgorithm
+  ECDSA_SECP521r1_SHA512 : SignatureAlgorithm
+
+  RSA_PSS_RSAE_SHA256    : SignatureAlgorithm
+  RSA_PSS_RSAE_SHA384    : SignatureAlgorithm
+  RSA_PSS_RSAE_SHA512    : SignatureAlgorithm
 
 public export
 Show SignatureAlgorithm where
+  show RSA_PKCS1_SHA256       = "RSA_PKCS1_SHA256"
+  show RSA_PKCS1_SHA384       = "RSA_PKCS1_SHA384"
+  show RSA_PKCS1_SHA512       = "RSA_PKCS1_SHA512"
+
   show ECDSA_SECP256r1_SHA256 = "ECDSA_SECP256r1_SHA256"
-  show RSA_PSS_RSAE_SHA256 = "RSA_PSS_RSAE_SHA256"
-  show RSA_PKCS1_SHA256 = "RSA_PKCS1_SHA256"
+  show ECDSA_SECP384r1_SHA384 = "ECDSA_SECP384r1_SHA384"
+  show ECDSA_SECP521r1_SHA512 = "ECDSA_SECP521r1_SHA512"
+
+  show RSA_PSS_RSAE_SHA256    = "RSA_PSS_RSAE_SHA256"
+  show RSA_PSS_RSAE_SHA384    = "RSA_PSS_RSAE_SHA384"
+  show RSA_PSS_RSAE_SHA512    = "RSA_PSS_RSAE_SHA512"
 
 public export
 signature_algorithm_to_id : SignatureAlgorithm -> (Bits8, Bits8)
-signature_algorithm_to_id ECDSA_SECP256r1_SHA256 = (0x04, 0x03)
-signature_algorithm_to_id RSA_PSS_RSAE_SHA256 = (0x08, 0x04)
 signature_algorithm_to_id RSA_PKCS1_SHA256 = (0x04, 0x01)
+signature_algorithm_to_id RSA_PKCS1_SHA384 = (0x05, 0x01)
+signature_algorithm_to_id RSA_PKCS1_SHA512 = (0x06, 0x01)
+
+signature_algorithm_to_id ECDSA_SECP256r1_SHA256 = (0x04, 0x03)
+signature_algorithm_to_id ECDSA_SECP384r1_SHA384 = (0x05, 0x03)
+signature_algorithm_to_id ECDSA_SECP521r1_SHA512 = (0x06, 0x03)
+
+signature_algorithm_to_id RSA_PSS_RSAE_SHA256 = (0x08, 0x04)
+signature_algorithm_to_id RSA_PSS_RSAE_SHA384 = (0x08, 0x05)
+signature_algorithm_to_id RSA_PSS_RSAE_SHA512 = (0x08, 0x06)
 
 public export
 id_to_signature_algorithm : (Bits8, Bits8) -> Maybe SignatureAlgorithm
-id_to_signature_algorithm (0x04, 0x03) = Just ECDSA_SECP256r1_SHA256
-id_to_signature_algorithm (0x08, 0x04) = Just RSA_PSS_RSAE_SHA256
 id_to_signature_algorithm (0x04, 0x01) = Just RSA_PKCS1_SHA256
+id_to_signature_algorithm (0x05, 0x01) = Just RSA_PKCS1_SHA384
+id_to_signature_algorithm (0x06, 0x01) = Just RSA_PKCS1_SHA512
+
+id_to_signature_algorithm (0x04, 0x03) = Just ECDSA_SECP256r1_SHA256
+id_to_signature_algorithm (0x05, 0x03) = Just ECDSA_SECP384r1_SHA384
+id_to_signature_algorithm (0x06, 0x03) = Just ECDSA_SECP521r1_SHA512
+
+id_to_signature_algorithm (0x08, 0x04) = Just RSA_PSS_RSAE_SHA256
+id_to_signature_algorithm (0x08, 0x05) = Just RSA_PSS_RSAE_SHA384
+id_to_signature_algorithm (0x08, 0x06) = Just RSA_PSS_RSAE_SHA512
+
 id_to_signature_algorithm _ = Nothing
 
 public export

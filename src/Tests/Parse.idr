@@ -8,6 +8,9 @@ import Network.TLS.Parse.PEM
 import Network.TLS.Parse.DER
 import Network.TLS.Parsing
 import Data.String.Parser
+import Network.TLS.Signature
+
+import Debug.Trace
 
 test_certificate : String
 test_certificate =
@@ -72,14 +75,47 @@ test_certificate2 =
   -----END CERTIFICATE-----
   """
 
+test_publickey : String
+test_publickey =
+  """
+  -----BEGIN PUBLIC KEY-----
+  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxIA2BrrnR2sIlATsp7aR
+  BD/3krwZ7vt9dNeoDQAee0s6SuYP6MBx/HPnAkwNvPS90R05a7pwRkoT6Ur4PfPh
+  CVlUe8lV+0Eto3ZSEeHz3HdsqlM3bso67L7Dqrc7MdVstlKcgJi8yeAoGOIL9/ig
+  Ov0XBFCeznm9nznx6mnsR5cugw+1ypXelaHmBCLV7r5SeVSh57+KhvZGbQ2fFpUa
+  TPegRpJZXBNS8lSeWvtOv9d6N5UBROTAJodMZT5AfX0jB0QB9IT/0I96H6BSENH0
+  8NXOeXApMuLKvnAf361rS7cRAfRLrWZqERMP4u6Cnk0Cnckc3WcW27kGGIbtwbqU
+  IQIDAQAB
+  -----END PUBLIC KEY-----
+  """
+
+test_ecdsa : String
+test_ecdsa =
+  """
+  -----BEGIN PUBLIC KEY-----
+  MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAErfb3dbHTSVQKXRBxvdwlBksiHKIj
+  Tp+h/rnQjL05vAwjx8+RppBa2EWrAxO+wSN6ucTInUf2luC5dmtQNmb3DQ==
+  -----END PUBLIC KEY-----
+  """
+
 partial
 test_der : HasIO io => io ()
 test_der = do
   let Right (blob, _) = parse parse_pem_blob test_certificate2
   | Left err => putStrLn err
   putStrLn "certificate"
-  -- putStrLn $ xxd blob.content
 
+
+  let Right (pk, _) = parse parse_pem_blob test_ecdsa
+  | Left err => putStrLn err
+  putStrLn "publickey"
+
+ 
+  let Right pk = extract_key pk.content
+  | Left err => putStrLn err
+
+  {-
+  -- putStrLn $ xxd blob.content
   let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z blob.content) parse_asn1
   | (Pure leftover _) => putStrLn $ "leftover: " <+> (xxd $ map get leftover)
   | (Fail err) => putStrLn $ show err
@@ -107,4 +143,7 @@ test_der = do
       ) = ok
 
   putStrLn $ show serial_number
+  -}
+
+
   putStrLn "ok"
