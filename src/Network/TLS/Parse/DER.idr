@@ -38,13 +38,13 @@ export
 is_constructed : Bits8 -> Bool
 is_constructed tag = testBit tag 5
 
-export
+public export
 record BitArray where
   constructor MkBitArray
   padding : Nat
   bytes : List Bits8
 
-export
+public export
 record Certificate where
   version : Nat
   serial_number : Integer
