@@ -289,3 +289,11 @@ splitLastAt1 n v = do
 public export
 modFinNZ : Nat -> (b : Nat) -> NonZero b -> Fin b
 modFinNZ a b prf = let x = boundModNatNZ a b prf in natToFinLTE (modNatNZ a b prf) x
+
+public export
+collapse_ordering : List Ordering -> Ordering
+collapse_ordering (LT :: xs) = LT
+collapse_ordering (GT :: xs) = GT
+collapse_ordering (EQ :: xs) = collapse_ordering xs
+collapse_ordering [] = EQ
+

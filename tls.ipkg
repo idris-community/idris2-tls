@@ -15,7 +15,8 @@ brief = "A portable idris2 implementation of TLS"
 
 depends = contrib, network
 
-modules = Crypto.ChaCha,
+modules = Crypto.RSA,
+          Crypto.ChaCha,
           Crypto.GF128,
           Crypto.Curve,
           Crypto.Curve.Weierstrass,
@@ -25,9 +26,8 @@ modules = Crypto.ChaCha,
           Crypto.Prime,
           Crypto.Hash,
           Crypto.Hash.Interfaces,
-          Crypto.Hash.OID,
           Crypto.Hash.SHA2,
-          Crypto.RSA,
+          Crypto.Hash.OID,
           Crypto.AES.Big,
           Crypto.AES.Small,
           Crypto.AES.Common,
@@ -55,9 +55,11 @@ modules = Crypto.ChaCha,
           Utils.OS,
           Utils.Pair,
           Utils.Parser,
+          Utils.Num,
           Utils.Show,
           Utils.Network.C,
-          Utils.Handle.C
+          Utils.Handle.C,
+          Utils.Time
 
 opts = "-Wno-shadowing"
 sourcedir = "src"
