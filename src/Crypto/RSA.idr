@@ -121,11 +121,12 @@ record PSSEncodedMessage n where
 mgf1 : {algo : _} -> Hash algo => (n : Nat) -> List Bits8 -> Vect n Bits8
 mgf1 n seed = take n $ stream_concat $ map (\x => hash algo (seed <+> (toList $ integer_to_be 4 $ cast x))) nats
 
+export
 modulus_bits : RSAPublicKey -> Nat
-modulus_bits (MkRSAPublicKey n _) = if n > 0 then go Z $ iterate (\y => shiftR y 1) n else 0
+modulus_bits (MkRSAPublicKey n _) = if n > 0 then go Z n else 0
   where
-    go : Nat -> Stream Integer -> Nat
-    go n (x :: xs) = if x == 0 then n else go (S n) xs
+    go : Nat -> Integer -> Nat
+    go n x = if x == 0 then n else go (S n) (shiftR x 1)
 
 emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
 emsa_pss_verify sLen message em emBits = do

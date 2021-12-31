@@ -101,11 +101,11 @@ test_ecdsa =
 partial
 test_der : HasIO io => io ()
 test_der = do
-  let Right (blob, _) = parse parse_pem_blob test_certificate2
+  let Right (blob, _) = parse parse_pem_blob test_certificate
   | Left err => putStrLn err
   putStrLn "certificate"
 
-
+  {-
   let Right (pk, _) = parse parse_pem_blob test_ecdsa
   | Left err => putStrLn err
   putStrLn "publickey"
@@ -113,8 +113,8 @@ test_der = do
  
   let Right pk = extract_key pk.content
   | Left err => putStrLn err
+  -}
 
-  {-
   -- putStrLn $ xxd blob.content
   let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z blob.content) parse_asn1
   | (Pure leftover _) => putStrLn $ "leftover: " <+> (xxd $ map get leftover)
@@ -122,28 +122,29 @@ test_der = do
 
   let (Universal ** 16 ** Sequence
         [ (Universal ** 16 ** Sequence
-          ( (ContextSpecific ** 0 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal version) ])
+          ( (ContextSpecific ** 0 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal 2) ])
           :: (Universal ** 2 ** IntVal serial_number)
-          :: (Universal ** 16 ** Sequence ((Universal ** 6 ** crt_signature_algorithm) :: crt_signature_parameter))
+          :: crt_algorithm
           :: (Universal ** 16 ** Sequence issuer)
           :: (Universal ** 16 ** Sequence
               [ valid_not_before
               , valid_not_after
               ])
           :: (Universal ** 16 ** Sequence subject)
-          :: (Universal ** 16 ** Sequence
-              [ (Universal ** 16 ** Sequence ((Universal ** 6 ** tbs_signature_algorithm) :: tbs_signature_parameter))
-              , (Universal ** 3 ** Bitstring tbs_subject_public_key)
-              ])
+          :: certificate_public_key
           :: optional_fields
           ))
-        , (Universal ** 16 ** Sequence ((Universal ** 6 ** signature_algorithm) :: signature_parameter))
+        , crt_signature_algorithm
         , (Universal ** 3 ** Bitstring signature_value)
         ]
       ) = ok
 
-  putStrLn $ show serial_number
-  -}
+  let Right key = extract_key' certificate_public_key
+  | Left err => putStrLn err
 
+  let Just (crt_algorithm, crt_algorithm_parameter) = extract_algorithm crt_algorithm
+  let Just (crt_signature_algorithm, crt_signature_algorithm_parameter) = extract_algorithm crt_signature_algorithm
+
+  putStrLn $ show key
 
   putStrLn "ok"
