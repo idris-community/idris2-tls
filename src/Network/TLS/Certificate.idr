@@ -6,6 +6,7 @@ import Network.TLS.Parsing
 import Network.TLS.Signature
 import Utils.Misc
 import Utils.Bytes
+import Utils.IPAddr
 import Data.List
 import Data.Vect
 import Data.Bits
@@ -142,9 +143,37 @@ record ExtKeyUsage where
   decipher_only     : Bool
 
 public export
+data GeneralName : Type where
+  DNSName : String -> GeneralName
+  IPv4Addr : IPv4Addr -> GeneralName
+  IPv6Addr : IPv6Addr -> GeneralName
+  UnknownGN : ASN1Token -> GeneralName
+
+public export
+Show GeneralName where
+  show (DNSName dns_name) = "DNS: " <+> dns_name
+  show (IPv4Addr addr) = "IP Address: " <+> show addr
+  show (IPv6Addr addr) = "IP Address: " <+> show addr
+  show (UnknownGN _) = "<unknown>"
+
+extract_general_name : ASN1Token -> Either String GeneralName
+extract_general_name (ContextSpecific ** 2 ** UnknownPrimitive _ _ str) = Right $ DNSName $ ascii_to_string str
+extract_general_name (ContextSpecific ** 7 ** UnknownPrimitive _ _ str) =
+  let vec = fromList str
+      gn = (IPv4Addr . MkIPv4Addr <$> exactLength 4 vec) <|> (IPv6Addr . MkIPv6Addr <$> exactLength 16 vec)
+  in maybe_to_either gn "invalid IP address"
+extract_general_name x = Right $ UnknownGN x
+
+public export
+record ExtSubjectAltName where
+  constructor MkExtSubjectAltName
+  general_names : List GeneralName
+
+public export
 extension_type : ExtensionType -> Type
 extension_type BasicConstraint = ExtBasicConstraint
 extension_type KeyUsage = ExtKeyUsage
+extension_type SubjectAltName = ExtSubjectAltName
 extension_type _ = List Bits8
 
 parse_to_extension_type : (t : ExtensionType) -> List Bits8 -> Either String (extension_type t)
@@ -174,29 +203,36 @@ parse_to_extension_type KeyUsage body = do
   case take 9 ((content.bytes >>= (toList . to_bools_be)) <+> replicate 9 False) of
     [a, b, c, d, e, f, g, h, i] => Right $ MkExtKeyUsage a b c d e f g h i
     _ => Left "impossible"
-parse_to_extension_type SubjectAltName body = Right body
+parse_to_extension_type SubjectAltName body = do
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z body) parse_asn1
+  | (Pure leftover _) => Left $ "malformed subject alt name ext: leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed subject alt name: underfed"
+  let (Universal ** 16 ** Sequence content) = ok
+  | _ => Left "malformed subject alt name: structure error"
+  MkExtSubjectAltName <$> traverse extract_general_name content
 parse_to_extension_type (UnknownExt x) body = Right body
 
 public export
-record RawExtension where
-  constructor MkRawExt
+record Extension where
+  constructor MkExt
   extension_id : ExtensionType
   critical : Bool
-  value : List Bits8
+  value : extension_type extension_id
 
-extract_extension : ASN1Token -> Either String RawExtension
+extract_extension : ASN1Token -> Either String Extension
 extract_extension (Universal ** 16 ** Sequence
                   [ (Universal ** 6 ** OID oid)
                   , (Universal ** 1 ** Boolean critical)
                   , (Universal ** 4 ** OctetString value)
-                  ]) = Right (MkRawExt (from_oid_ext oid) critical value)
+                  ]) = let ext_id = from_oid_ext oid in (MkExt ext_id critical) <$> parse_to_extension_type ext_id value
 extract_extension (Universal ** 16 ** Sequence
                   [ (Universal ** 6 ** OID oid)
                   , (Universal ** 4 ** OctetString value)
-                  ]) = Right (MkRawExt (from_oid_ext oid) False value)
+                  ]) = let ext_id = from_oid_ext oid in (MkExt ext_id False) <$> parse_to_extension_type ext_id value
 extract_extension _ = Left "malformed extension field"
 
-extract_extensions : List ASN1Token -> Either String (List RawExtension)
+extract_extensions : List ASN1Token -> Either String (List Extension)
 extract_extensions [] = Right []
 extract_extensions (x :: xs) =
   case last (x :: xs) of
@@ -215,11 +251,24 @@ record Certificate where
   cert_public_key : PublicKey
   sig_algorithm : (List Nat, List ASN1Token)
   signature_value : BitArray
-  extensions : List RawExtension
+  extensions : List Extension
 
 public export
 Show Certificate where
-  show cert = show cert.subject
+  show cert = "Subject: " <+> show cert.subject <+> " Issuer: " <+> show cert.issuer
+
+export
+certificate_subject_names : Certificate -> List GeneralName
+certificate_subject_names cert = go (toList (DNSName <$> common_name)) cert.extensions
+  where
+    go : List GeneralName -> List Extension -> List GeneralName
+    go acc [] = acc
+    go acc (x :: xs) =
+      case x of
+        MkExt SubjectAltName _ ext => go (acc <+> ext.general_names) xs
+        _ => go acc xs
+    common_name : Maybe String
+    common_name = lookup CommonName $ dn_attributes cert.subject
 
 export
 parse_certificate : List Bits8 -> Either String Certificate

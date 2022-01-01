@@ -22,9 +22,6 @@ parse_report_error acc (x :: xs) =
     Right cert => parse_report_error (cert :: acc) xs
     Left err => Left $ "error: " <+> err <+> ", content:\n" <+> encode_pem_blob x
 
-print_ext : HasIO io => RawExtension -> io ()
-print_ext ext = if ext.critical then putStrLn $ show ext.extension_id <+> " " <+> show ext.critical else pure ()
-
 -- Download it from https://wiki.mozilla.org/CA/Included_Certificates
 test_cert_list : HasIO io => String -> io ()
 test_cert_list cert_store_path = do
@@ -38,7 +35,6 @@ test_cert_list cert_store_path = do
   | Left err => putStrLn $ "error while parsing crt: " <+> err
 
   traverse_ (putStrLn . show) certs
-  traverse_ (print_ext) (certs >>= extensions)
 
   putStrLn $ show $ length certs
   putStrLn "ok"

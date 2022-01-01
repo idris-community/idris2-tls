@@ -12,6 +12,27 @@ import Utils.Handle
 import Control.Linear.LIO
 import Utils.Misc
 import Utils.Bytes
+import Data.String
+import Data.List1
+
+domain_predicate : String -> Maybe (String -> Bool)
+domain_predicate predicate = do
+  let parts = split ('.' ==) predicate
+  guard $ verify_predicate parts
+  Just (apply_predicate parts . split ('.' == ))
+  where
+    str_eq : String -> String -> Lazy Bool
+    str_eq "*" _ = delay True
+    str_eq _ "*" = delay True
+    str_eq a b = delay (a == b)
+    apply_predicate : List1 String -> List1 String -> Bool
+    apply_predicate a b = (length a == length b) && (and $ zipWith str_eq a b)
+    verify_predicate : List1 String -> Bool
+    verify_predicate ("*" ::: []) = False
+    verify_predicate ("*" ::: [_]) = False
+    verify_predicate ("*" ::: [_, ""]) = False
+    verify_predicate ("*" ::: xs) = and $ map (delay . not . isInfixOf "*") xs
+    verify_predicate xs = and $ map (delay . not . isInfixOf "*") (toList xs)
 
 test_http_body : String -> List Bits8
 test_http_body hostname = string_to_ascii $ "GET / HTTP/1.1\nHost: " <+> hostname <+> "\n\n"
@@ -21,7 +42,7 @@ certificate_check : CertificateCheck IO
 certificate_check cert = do
   let certificates = body <$> cert.certificates
   case the _ $ traverse parse_certificate certificates of
-    Right ok => traverse_ (putStrLn . show) ok $> True
+    Right ok => traverse_ (putStrLn . show . certificate_subject_names) ok $> True
     Left err => putStrLn err $> False
 
 tls_test : String -> Int -> IO ()
