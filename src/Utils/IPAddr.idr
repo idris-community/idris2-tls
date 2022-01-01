@@ -15,7 +15,7 @@ import Utils.Bytes
 public export
 record IPv4Addr where
   constructor MkIPv4Addr
-  body : Vect 4 (Fin 256)
+  body : Vect 4 Bits8
 
 public export
 Show IPv4Addr where
@@ -28,16 +28,13 @@ Eq IPv4Addr where
 public export
 record IPv6Addr where
   constructor MkIPv6Addr
-  body : Vect 16 (Fin 256)
+  body : Vect 16 Bits8
 
 bits16_show : Bits16 -> String
 bits16_show x = (show_hex (cast $ shiftR x 8)) <+> (show_hex $ cast x)
 
-to_bits16 : Vect 2 (Fin 256) -> Bits16
-to_bits16 a = from_be $ map (cast {to=Bits8} . finToInteger) a
-
 to_hextets : IPv6Addr -> Vect 8 Bits16
-to_hextets addr = map to_bits16 $ group 8 2 addr.body
+to_hextets addr = map from_be $ group 8 2 addr.body
 
 public export
 Show IPv6Addr where
@@ -47,12 +44,12 @@ public export
 Eq IPv6Addr where
   x == y = x.body == y.body
 
-read_decimal_byte : Monad m => ParseT m (Fin 256)
+read_decimal_byte : Monad m => ParseT m Bits8
 read_decimal_byte = do
   n <- natural
-  case natToFin n 256 of
-    Just x => pure x
-    Nothing => fail "number out of bound"
+  if n < 256
+    then pure $ cast n
+    else fail "number out of bound"
 
 parse_ipv4' : Monad m => ParseT m IPv4Addr
 parse_ipv4' = do
@@ -110,14 +107,8 @@ parse_ipv6_expand_columns (Two a b) = do
   let apb = a <+> replicate plen 0 <+> b
   maybe_to_either (exactLength _ $ fromList apb) "invalid length"
 
-explode_bits16 : Bits16 -> Vect 2 (Fin 256)
-explode_bits16 x =
-  let a = modFinNZ (cast (shiftR x 8)) 256 SIsNonZero
-      b = modFinNZ (cast x) 256 SIsNonZero
-  in [a, b]
-
 export
 parse_ipv6 : String -> Either String IPv6Addr
 parse_ipv6 x = do
   y <- (parse_ipv6_to_octets x >>= parse_ipv6_expand_columns)
-  pure $ MkIPv6Addr $ concat $ map explode_bits16 y
+  pure $ MkIPv6Addr $ concat $ map (to_be {n=2}) y
