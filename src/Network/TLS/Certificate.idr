@@ -7,12 +7,62 @@ import Network.TLS.Signature
 import Utils.Misc
 import Utils.Bytes
 import Data.List
+import Data.Vect
+import Data.Bits
 import Data.String.Parser
+import Data.String.Extra
+
+public export
+data AttributeType : Type where
+  CommonName : AttributeType
+  Organization : AttributeType
+  OrganizationUnit : AttributeType
+  Country : AttributeType
+  StateOrProvince : AttributeType
+  LocalityName : AttributeType
+  SerialNumber : AttributeType
+  UnknownAttr : List Nat -> AttributeType
+
+public export
+Eq AttributeType where
+  CommonName       == CommonName       = True
+  Organization     == Organization     = True
+  OrganizationUnit == OrganizationUnit = True
+  Country          == Country          = True
+  StateOrProvince  == StateOrProvince  = True
+  LocalityName     == LocalityName     = True
+  SerialNumber     == SerialNumber     = True
+  UnknownAttr x    == UnknownAttr y        = x == y
+  _ == _ = False
+
+public export
+Show AttributeType where
+  show CommonName       = "CN"
+  show Organization     = "O"
+  show OrganizationUnit = "OU"
+  show Country          = "C"
+  show StateOrProvince  = "ST"
+  show LocalityName     = "L"
+  show SerialNumber     = "SERIALNUMBER"
+  show (UnknownAttr x)  = show x
+
+export
+from_oid_attr : List Nat -> AttributeType
+from_oid_attr oid =
+  case map natToInteger oid of
+    [ 2, 5, 4, 3 ]  => Country
+    [ 2, 5, 4, 10 ] => Organization
+    [ 2, 5, 4, 11 ] => OrganizationUnit
+    [ 2, 5, 4, 6 ]  => CommonName
+    [ 2, 5, 4, 8 ]  => StateOrProvince
+    [ 2, 5, 4, 7 ]  => LocalityName
+    [ 2, 5, 4, 5 ]  => SerialNumber 
+    _ => UnknownAttr oid
 
 public export
 record RelativeDistinguishedName where
   constructor MkRDN
-  attributes : List (List Nat, String)
+  attributes : List (AttributeType, String)
 
 public export
 record DistinguishedName where
@@ -28,11 +78,18 @@ Eq DistinguishedName where
   a == b = a.rdns == b.rdns
 
 export
-dn_attributes : DistinguishedName -> List (List Nat, String)
+dn_attributes : DistinguishedName -> List (AttributeType, String)
 dn_attributes dn = dn.rdns >>= attributes
 
-extract_attr : ASN1Token -> Maybe (List Nat, String)
-extract_attr (Universal ** 16 ** Sequence [ (Universal ** 6 ** OID oid), string ]) = (oid,) <$> extract_string string
+public export
+Show DistinguishedName where
+  show dn = join "," $ go <$> dn_attributes dn
+    where
+      go : (AttributeType, String) -> String
+      go (attribute, content) = show attribute <+> "=" <+> content
+
+extract_attr : ASN1Token -> Maybe (AttributeType, String)
+extract_attr (Universal ** 16 ** Sequence [ (Universal ** 6 ** OID oid), string ]) = (from_oid_attr oid,) <$> extract_string string
 extract_attr _ = Nothing
 
 extract_rdn : ASN1Token -> Maybe RelativeDistinguishedName
@@ -42,6 +99,109 @@ extract_rdn _ = Nothing
 extract_dn : ASN1Token -> Maybe DistinguishedName
 extract_dn (Universal ** 16 ** Sequence rdns) = MkDN <$> traverse extract_rdn rdns
 extract_dn _ = Nothing
+
+public export
+data ExtensionType : Type where
+  BasicConstraint : ExtensionType
+  KeyUsage : ExtensionType
+  SubjectAltName : ExtensionType
+  UnknownExt : List Nat -> ExtensionType
+
+public export
+Show ExtensionType where
+  show BasicConstraint        = "BasicConstraint"
+  show KeyUsage               = "KeyUsage"
+  show SubjectAltName         = "SubjectAltName"
+  show (UnknownExt x)         = "UnknownExt (" <+> show x <+> ")"
+
+from_oid_ext : List Nat -> ExtensionType
+from_oid_ext oid =
+  case map natToInteger oid of
+    [ 2, 5, 29, 15 ] => KeyUsage
+    [ 2, 5, 29, 19 ] => BasicConstraint
+    [ 2, 5, 29, 17 ] => SubjectAltName
+    _ => UnknownExt oid
+
+public export
+record ExtBasicConstraint where
+  constructor MkExtBasicConstraint
+  ca : Bool
+  pathLen : Maybe Nat
+
+public export
+record ExtKeyUsage where
+  constructor MkExtKeyUsage
+  digital_signature : Bool
+  non_repudiation   : Bool
+  key_encipherment  : Bool
+  data_encipherment : Bool
+  key_agreement     : Bool
+  key_cert_sign     : Bool
+  crl_sign          : Bool
+  encipher_only     : Bool
+  decipher_only     : Bool
+
+public export
+extension_type : ExtensionType -> Type
+extension_type BasicConstraint = ExtBasicConstraint
+extension_type KeyUsage = ExtKeyUsage
+extension_type _ = List Bits8
+
+parse_to_extension_type : (t : ExtensionType) -> List Bits8 -> Either String (extension_type t)
+parse_to_extension_type BasicConstraint body = do
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z body) parse_asn1
+  | (Pure leftover _) => Left $ "malformed basic constraint ext: leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed basic constraint: underfed"
+  let ( Universal ** 16 ** Sequence content ) = ok
+  | _ => Left "malformed basic constraint: structure error"
+  case content of
+    [] =>
+      Right (MkExtBasicConstraint False Nothing)
+    [ (Universal ** 1 ** Boolean ca) ] =>
+      Right (MkExtBasicConstraint ca Nothing)
+    [ (Universal ** 1 ** Boolean ca), (Universal ** 2 ** IntVal depth) ] =>
+      Right (MkExtBasicConstraint ca $ Just $ integerToNat depth)
+    _ =>
+      Left "malformed basic constraint: structure error"
+parse_to_extension_type KeyUsage body = do
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z body) parse_asn1
+  | (Pure leftover _) => Left $ "malformed key usage ext: leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed key usage: underfed"
+  let (Universal ** 3 ** Bitstring content) = ok
+  | _ => Left "malformed key usage: structure error"
+  case take 9 ((content.bytes >>= (toList . to_bools_be)) <+> replicate 9 False) of
+    [a, b, c, d, e, f, g, h, i] => Right $ MkExtKeyUsage a b c d e f g h i
+    _ => Left "impossible"
+parse_to_extension_type SubjectAltName body = Right body
+parse_to_extension_type (UnknownExt x) body = Right body
+
+public export
+record RawExtension where
+  constructor MkRawExt
+  extension_id : ExtensionType
+  critical : Bool
+  value : List Bits8
+
+extract_extension : ASN1Token -> Either String RawExtension
+extract_extension (Universal ** 16 ** Sequence
+                  [ (Universal ** 6 ** OID oid)
+                  , (Universal ** 1 ** Boolean critical)
+                  , (Universal ** 4 ** OctetString value)
+                  ]) = Right (MkRawExt (from_oid_ext oid) critical value)
+extract_extension (Universal ** 16 ** Sequence
+                  [ (Universal ** 6 ** OID oid)
+                  , (Universal ** 4 ** OctetString value)
+                  ]) = Right (MkRawExt (from_oid_ext oid) False value)
+extract_extension _ = Left "malformed extension field"
+
+extract_extensions : List ASN1Token -> Either String (List RawExtension)
+extract_extensions [] = Right []
+extract_extensions (x :: xs) =
+  case last (x :: xs) of
+    (ContextSpecific ** 3 ** UnknownConstructed _ _ [ (Universal ** 16 ** Sequence extensions) ]) => traverse extract_extension extensions
+    _ => Left "malformed extension list field"
 
 public export
 record Certificate where
@@ -55,6 +215,11 @@ record Certificate where
   cert_public_key : PublicKey
   sig_algorithm : (List Nat, List ASN1Token)
   signature_value : BitArray
+  extensions : List RawExtension
+
+public export
+Show Certificate where
+  show cert = show cert.subject
 
 export
 parse_certificate : List Bits8 -> Either String Certificate
@@ -83,7 +248,7 @@ parse_certificate blob = do
 
   let Just [ valid_not_before, valid_not_after ] = traverse {f=Maybe} extract_epoch valid_period
   | _ => Left "malformed validity timestamp"
-  
+
   key <- extract_key' certificate_public_key
 
   crt_algorithm <- maybe_to_either (extract_algorithm crt_algorithm) "malformed certificate algorithm"
@@ -91,6 +256,8 @@ parse_certificate blob = do
 
   issuer <- maybe_to_either (extract_dn issuer) "malformed issuer"
   subject <- maybe_to_either (extract_dn subject) "malformed subject"
+
+  extensions <- extract_extensions optional_fields
 
   pure $
     MkCertificate
@@ -103,3 +270,4 @@ parse_certificate blob = do
       key
       crt_signature_algorithm
       signature_value
+      extensions
