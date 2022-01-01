@@ -51,10 +51,10 @@ export
 from_oid_attr : List Nat -> AttributeType
 from_oid_attr oid =
   case map natToInteger oid of
-    [ 2, 5, 4, 3 ]  => Country
+    [ 2, 5, 4, 3 ]  => CommonName
     [ 2, 5, 4, 10 ] => Organization
     [ 2, 5, 4, 11 ] => OrganizationUnit
-    [ 2, 5, 4, 6 ]  => CommonName
+    [ 2, 5, 4, 6 ]  => Country
     [ 2, 5, 4, 8 ]  => StateOrProvince
     [ 2, 5, 4, 7 ]  => LocalityName
     [ 2, 5, 4, 5 ]  => SerialNumber 
