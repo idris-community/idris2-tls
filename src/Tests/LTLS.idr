@@ -3,6 +3,7 @@ module Tests.LTLS
 import Network.TLS
 import Network.TLS.Handshake
 import Network.TLS.Handle
+import Network.TLS.Certificate
 import Network.Socket
 import Crypto.Random.C
 import Crypto.Random
@@ -17,7 +18,11 @@ test_http_body hostname = string_to_ascii $ "GET / HTTP/1.1\nHost: " <+> hostnam
 
 -- TODO: implement this
 certificate_check : CertificateCheck IO
-certificate_check = const $ pure True 
+certificate_check cert = do
+  let certificates = body <$> cert.certificates
+  case the _ $ traverse parse_certificate certificates of
+    Right ok => traverse_ (putStrLn . show) ok $> True
+    Left err => putStrLn err $> False
 
 tls_test : String -> Int -> IO ()
 tls_test target_hostname port = do
