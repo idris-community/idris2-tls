@@ -12,6 +12,13 @@ import Data.List1
 import Data.Fin.Extra
 import Syntax.WithProof
 
+||| primarily used for `hack_*` functions for hacking open ADTs into sums ^/v products
+public export
+Eithers : List Type -> Type
+Eithers [] = Void
+Eithers (x :: []) = x
+Eithers (x :: xs) = Either x (Eithers xs)
+
 public export
 kill_linear : Void -> (1 _ : a) -> s
 kill_linear x = void x

@@ -53,13 +53,6 @@ namespace Parserializer
   (<|>) : (Semigroup e, Monoid i) => Parserializer c i e a -> Parserializer c i e b -> Parserializer c i e (Either a b)
   (<|>) = aeither
 
-||| primarily used for `hack_*` functions for hacking open ADTs into sums ^/v products
-public export
-Eithers : List Type -> Type
-Eithers [] = Void
-Eithers (x :: []) = x
-Eithers (x :: xs) = Either x (Eithers xs)
-
 ||| essentially (Nat, `a`), where Nat denotes the position, usually starts with 0
 public export
 record Posed (a : Type) where
