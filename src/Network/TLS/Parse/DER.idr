@@ -54,6 +54,7 @@ data ASN1 : TagType -> Nat -> Type where
   Null : ASN1 Universal 0x05
   OID : List Nat -> ASN1 Universal 0x06
   PrintableString : String -> ASN1 Universal 0x13
+  T61String : String -> ASN1 Universal 0x14
   IA5String : String -> ASN1 Universal 0x16
   UTF8String : String -> ASN1 Universal 0x0C
   Sequence : List (t ** n ** ASN1 t n) -> ASN1 Universal 0x10 -- 0x30 & 31
@@ -192,6 +193,7 @@ export
 extract_string : ASN1Token -> Maybe String
 extract_string (Universal ** 12 ** UTF8String b) = Just b
 extract_string (Universal ** 19 ** PrintableString b) = Just b
+extract_string (Universal ** 20 ** T61String b) = Just b
 extract_string (Universal ** 22 ** IA5String b) = Just b
 extract_string _ = Nothing
 
@@ -215,6 +217,7 @@ parse_asn1 = do
     (False, MkTag Universal 6) => (\b => (Universal ** 6 ** OID b)) <$> parse_oid len
     (False, MkTag Universal 12) => (\b => (Universal ** 12 ** UTF8String b)) <$> parse_utf8 len
     (False, MkTag Universal 19) => (\b => (Universal ** 19 ** PrintableString $ ascii_to_string $ toList b)) <$> count len p_get
+    (False, MkTag Universal 20) => (\b => (Universal ** 20 ** T61String $ ascii_to_string $ toList b)) <$> count len p_get
     (False, MkTag Universal 22) => (\b => (Universal ** 22 ** IA5String $ ascii_to_string $ toList b)) <$> count len p_get
     (False, MkTag Universal 23) => (\b => (Universal ** 23 ** UTCTime b)) <$> parse_time len parse_utc_time
     (False, MkTag Universal 24) => (\b => (Universal ** 24 ** GeneralizedTime b)) <$> parse_time len parse_generalized_time
