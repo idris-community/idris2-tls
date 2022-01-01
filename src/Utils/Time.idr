@@ -371,6 +371,8 @@ Show DateTime where
     <+> (show_fin_pad 2 datetime.minute)
     <+> ":"
     <+> (show_fin_pad 2 datetime.second)
+    <+> "."
+    <+> (show_fin_pad 3 datetime.subsecond)
     <+> " "
     <+> (if datetime.offset_plus_or_minus then "+" else "-")
     <+> (show_nat_pad 2 datetime.hour_offset)
@@ -399,8 +401,8 @@ finNFromNDigits name bound n = do
 export
 utc_time : Monad m => ParseT m DateTime
 utc_time = do
-  yy  <- natFromDigits . toList <$> ntimes 2 digit
-  mm  <- natFromDigits . toList <$> ntimes 2 digit
+  yy <- natFromDigits . toList <$> ntimes 2 digit
+  mm <- natFromDigits . toList <$> ntimes 2 digit
   let year = if yy < 50 then 2000 + natToInteger yy else 1900 + natToInteger yy
   let Just month = nat_to_month mm
   | Nothing => fail $ "invalid month: " <+> show mm
@@ -425,5 +427,49 @@ utc_time = do
       pure (hh, minute_off)
 
 export
+generalized_time : Monad m => ParseT m DateTime
+generalized_time = do
+  year <- natToInteger . natFromDigits . toList <$> ntimes 4 digit
+  mm <- natFromDigits . toList <$> ntimes 2 digit
+  let Just month = nat_to_month mm
+  | Nothing => fail $ "invalid month: " <+> show mm
+
+  FS fs_day <- finNFromNDigits "day" (S $ month_num_of_dates year month) 2
+  | FZ => fail "invalid day: 0"
+
+  hour <- finNFromNDigits "hour" 24 2
+  minute <- option 0 $ finNFromNDigits "minute" 60 2
+  second <- option 0 $ finNFromNDigits "second" 60 2
+
+  subsecond <- option 0 subsecond
+
+  sign <- satisfy (const True)
+  let date = MkDate year month (FS fs_day) FSIsNonZero
+  let mk_date_time = MkDateTime date hour minute second subsecond
+  case sign of
+    'Z' => pure $ mk_date_time True 0 0
+    '+' => uncurry (mk_date_time True) <$> utc_time_offset
+    '-' => uncurry (mk_date_time False) <$> utc_time_offset
+    err => fail $ "unrecognized timezone sign: " <+> show err
+  where
+    utc_time_offset : ParseT m (Nat, Fin 60)
+    utc_time_offset = do
+      hh <- natFromDigits . toList <$> ntimes 2 digit
+      minute_off <- finNFromNDigits "minute offset" 60 2
+      pure (hh, minute_off)
+    subsecond : ParseT m (Fin 1000)
+    subsecond = do
+      a <- char '.' *> natFromNDigits 1
+      b <- option 0 $ natFromNDigits 1
+      c <- option 0 $ natFromNDigits 1
+      case natToFin (a * 100 + b * 10 + c) 1000 of
+        Just x => pure x
+        Nothing => fail "how"
+
+export
 parse_utc_time : String -> Either String DateTime
 parse_utc_time = map fst . parse utc_time
+
+export
+parse_generalized_time : String -> Either String DateTime
+parse_generalized_time = map fst . parse generalized_time

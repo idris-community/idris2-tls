@@ -7,6 +7,7 @@ import Utils.Bytes
 import Utils.Parser
 import Network.TLS.Parsing
 import Utils.Misc
+import public Utils.Time
 
 import Debug.Trace
 
@@ -45,11 +46,6 @@ record BitArray where
   bytes : List Bits8
 
 public export
-record Certificate where
-  version : Nat
-  serial_number : Integer
-
-public export
 data ASN1 : TagType -> Nat -> Type where
   Boolean : Bool -> ASN1 Universal 0x01
   IntVal : Integer -> ASN1 Universal 0x02
@@ -58,8 +54,12 @@ data ASN1 : TagType -> Nat -> Type where
   Null : ASN1 Universal 0x05
   OID : List Nat -> ASN1 Universal 0x06
   PrintableString : String -> ASN1 Universal 0x13
+  IA5String : String -> ASN1 Universal 0x16
+  UTF8String : String -> ASN1 Universal 0x0C
   Sequence : List (t ** n ** ASN1 t n) -> ASN1 Universal 0x10 -- 0x30 & 31
   Set : List (t ** n ** ASN1 t n) -> ASN1 Universal 0x11 -- 0x31 & 31
+  UTCTime : DateTime -> ASN1 Universal 0x17
+  GeneralizedTime : DateTime -> ASN1 Universal 0x18
   UnknownConstructed : (t : TagType) -> (n : Nat) -> List (t ** n ** ASN1 t n) -> ASN1 t n
   UnknownPrimitive : (t : TagType) -> (n : Nat) -> List Bits8 -> ASN1 t n
 
@@ -168,11 +168,40 @@ parse_oid (S n) = do
   nodes <- toList <$> count n p_get
   pure $ decode_oid_nodes first_node nodes
 
+export
+parse_time : (Cons (Posed Bits8) i, Monoid i) => Nat -> (String -> Either String DateTime) -> Parser i (SimpleError String) DateTime
+parse_time len f = do
+  str <- count len p_get
+  case f $ ascii_to_string $ toList str of
+    Right datetime => pure datetime
+    Left err => fail $ msg err
+
+export
+parse_utf8 : (Cons (Posed Bits8) i, Monoid i) => Nat -> Parser i (SimpleError String) String
+parse_utf8 len = do
+  str <- count len p_get
+  case utf8_decode $ toList str of
+    Just str => pure str
+    Nothing => fail $ msg "invalid utf8 string"
+
 public export
 ASN1Token : Type
 ASN1Token = (t ** n ** ASN1 t n)
 
 export
+extract_string : ASN1Token -> Maybe String
+extract_string (Universal ** 12 ** UTF8String b) = Just b
+extract_string (Universal ** 19 ** PrintableString b) = Just b
+extract_string (Universal ** 22 ** IA5String b) = Just b
+extract_string _ = Nothing
+
+export
+extract_epoch : ASN1Token -> Maybe Integer
+extract_epoch (Universal ** 23 ** UTCTime time) = Just $ datetime_to_epoch time
+extract_epoch (Universal ** 24 ** GeneralizedTime time) = Just $ datetime_to_epoch time
+extract_epoch _ = Nothing
+
+export          
 parse_asn1 : (Monoid i, Cons (Posed Bits8) i) => Parser i (SimpleError String) ASN1Token
 parse_asn1 = do
   tag' <- parse_tag_id
@@ -184,7 +213,11 @@ parse_asn1 = do
     (False, MkTag Universal 4) => (\b => (Universal ** 4 ** OctetString $ toList b)) <$> count len p_get
     (False, MkTag Universal 5) => (\b => (Universal ** 5 ** Null)) <$> parse_null len
     (False, MkTag Universal 6) => (\b => (Universal ** 6 ** OID b)) <$> parse_oid len
+    (False, MkTag Universal 12) => (\b => (Universal ** 12 ** UTF8String b)) <$> parse_utf8 len
     (False, MkTag Universal 19) => (\b => (Universal ** 19 ** PrintableString $ ascii_to_string $ toList b)) <$> count len p_get
+    (False, MkTag Universal 22) => (\b => (Universal ** 22 ** IA5String $ ascii_to_string $ toList b)) <$> count len p_get
+    (False, MkTag Universal 23) => (\b => (Universal ** 23 ** UTCTime b)) <$> parse_time len parse_utc_time
+    (False, MkTag Universal 24) => (\b => (Universal ** 24 ** GeneralizedTime b)) <$> parse_time len parse_generalized_time
     (True,  MkTag Universal 16) => (\b => (Universal ** 16 ** Sequence b)) <$> constraint_parse len parse_asn1
     (True,  MkTag Universal 17) => (\b => (Universal ** 17 ** Set b)) <$> constraint_parse len parse_asn1
     (True,  MkTag t n) => (\b => (t ** n ** UnknownConstructed t n b)) <$> constraint_parse len parse_asn1

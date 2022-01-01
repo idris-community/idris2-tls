@@ -9,6 +9,7 @@ import Network.TLS.Parse.DER
 import Network.TLS.Parsing
 import Data.String.Parser
 import Network.TLS.Signature
+import Network.TLS.Certificate
 
 import Debug.Trace
 
@@ -98,6 +99,7 @@ test_ecdsa =
   -----END PUBLIC KEY-----
   """
 
+
 partial
 test_der : HasIO io => io ()
 test_der = do
@@ -115,36 +117,6 @@ test_der = do
   | Left err => putStrLn err
   -}
 
-  -- putStrLn $ xxd blob.content
-  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z blob.content) parse_asn1
-  | (Pure leftover _) => putStrLn $ "leftover: " <+> (xxd $ map get leftover)
-  | (Fail err) => putStrLn $ show err
-
-  let (Universal ** 16 ** Sequence
-        [ (Universal ** 16 ** Sequence
-          ( (ContextSpecific ** 0 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal 2) ])
-          :: (Universal ** 2 ** IntVal serial_number)
-          :: crt_algorithm
-          :: (Universal ** 16 ** Sequence issuer)
-          :: (Universal ** 16 ** Sequence
-              [ valid_not_before
-              , valid_not_after
-              ])
-          :: (Universal ** 16 ** Sequence subject)
-          :: certificate_public_key
-          :: optional_fields
-          ))
-        , crt_signature_algorithm
-        , (Universal ** 3 ** Bitstring signature_value)
-        ]
-      ) = ok
-
-  let Right key = extract_key' certificate_public_key
-  | Left err => putStrLn err
-
-  let Just (crt_algorithm, crt_algorithm_parameter) = extract_algorithm crt_algorithm
-  let Just (crt_signature_algorithm, crt_signature_algorithm_parameter) = extract_algorithm crt_signature_algorithm
-
-  putStrLn $ show key
-
+  let Right certificate = parse_certificate blob.content
+  
   putStrLn "ok"
