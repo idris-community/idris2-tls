@@ -6,7 +6,7 @@ import Data.String.Extra
 import Data.String.Parser
 import Utils.Base64
 import Utils.Bytes
-import public Control.Monad.Identity
+import Utils.Misc
 
 public export
 record PEMBlob where
@@ -41,7 +41,7 @@ takeUntil stop = do
              False => takeUntil' s top
              True => pure ()
 
-public export
+export
 parse_pem_blob : Parser PEMBlob
 parse_pem_blob = do
   takeUntil "-----BEGIN "
@@ -57,3 +57,13 @@ parse_pem_blob = do
   case base64_decode $ pack $ concat content of
     Right str => pure $ MkPEMBlobk label str
     Left  err => fail $ "failed parsing PEM content: " <+> err
+
+fold_string : String -> String
+fold_string str = pack $ foldl (<+>) [] $ map (<+> ['\n']) $ chunk 64 $ unpack str
+
+export
+encode_pem_blob : PEMBlob -> String
+encode_pem_blob blob =
+  "-----BEGIN " <+> blob.label <+> "-----\n"
+  <+> (fold_string $ base64_encode blob.content)
+  <+> "-----END " <+> blob.label <+> "-----"
