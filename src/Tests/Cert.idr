@@ -20,7 +20,7 @@ parse_report_error acc [] = Right acc
 parse_report_error acc (x :: xs) =
   case parse_certificate x.content of
     Right cert => parse_report_error (cert :: acc) xs
-    Left err => Left $ xxd x.content <+> "\n" <+> err
+    Left err => Left $ "error: " <+> err <+> ", content:\n" <+> encode_pem_blob x
 
 -- Download it from https://wiki.mozilla.org/CA/Included_Certificates
 test_cert_list : HasIO io => String -> io ()
