@@ -7,7 +7,9 @@ import Utils.Misc
 import Utils.Bytes
 import Data.String
 import Data.List
+import Data.List.Lazy
 import Data.List1
+import Data.Vect
 import Utils.IPAddr
 import Data.Either
 import System
@@ -83,7 +85,7 @@ check_leaf_certificate : HasIO io => Certificate -> EitherT String io ()
 check_leaf_certificate cert = do
   True <- check_cert_timestamp cert
   | False => throwE $ "expired certificate: " <+> show cert
-  let Just key_usage = extract_key_usage cert
+  let Just key_usage = extract_extension KeyUsage cert
   | Nothing => throwE $ "certificate does not specify key usage: " <+> show cert
   let True = key_usage.digital_signature
   | False => throwE $ "certificate key usage does not allow digital signature: " <+> show cert
@@ -93,9 +95,9 @@ check_branch_certificate : HasIO io => Nat -> Certificate -> EitherT String io (
 check_branch_certificate depth cert = do
   True <- check_cert_timestamp cert
   | False => throwE $ "expired certificate: " <+> show cert
-  let Just key_usage = extract_key_usage cert
+  let Just key_usage = extract_extension KeyUsage cert
   | Nothing => throwE $ "certificate does not specify key usage: " <+> show cert
-  let Just basic_constraint = extract_basic_constraint cert
+  let Just basic_constraint = extract_extension BasicConstraint cert
   | Nothing => throwE $ "certificate does not specify basic constraint: " <+> show cert
   let True = basic_constraint.ca
   | False => throwE $ "certificate is not a CA: " <+> show cert
@@ -113,25 +115,64 @@ check_branch_certificate depth cert = do
 verify_certificate_signature : Certificate -> Certificate -> Bool
 verify_certificate_signature subject issuer = True
 
+has_intersect : Eq a => List a -> List a -> Bool
+has_intersect [] y = False
+has_intersect x [] = False
+has_intersect (x :: xs) y = if any (x ==) y then True else has_intersect xs y
+
+auth_key_id_predicate : ExtAuthorityKeyIdentifier -> (Certificate -> Bool)
+auth_key_id_predicate (MkExtAuthorityKeyIdentifier Nothing [] Nothing) = const False
+auth_key_id_predicate auth_key_id = go auth_key_id
+  where
+    def : Maybe Bool -> Bool
+    def Nothing = True
+    def (Just a) = a
+    go0 : ExtAuthorityKeyIdentifier -> Certificate -> Bool
+    go0 auth_key_id cert = def (map (\i => i == cert.cert_public_key_id) auth_key_id.key_identifier)
+    go1 : ExtAuthorityKeyIdentifier -> Certificate -> Bool
+    go1 auth_key_id cert = def (map (\i => i == cert.serial_number) auth_key_id.serial_number)
+    go2 : ExtAuthorityKeyIdentifier -> Certificate -> Bool
+    go2 auth_key_id cert =
+      case auth_key_id.general_names of
+        [] => True
+        gn => has_intersect gn $ certificate_subject_names cert
+    go : ExtAuthorityKeyIdentifier -> Certificate -> Bool
+    go a b = go0 a b && go1 a b && go2 a b
+
+flatten : Maybe (LazyList a) -> LazyList a
+flatten Nothing = []
+flatten (Just a) = a
+
 verify_certificate_chain : HasIO io => Nat -> List Certificate -> List Certificate -> Certificate -> EitherT String io ()
 verify_certificate_chain depth trusted untrusted current = do
-  let Just (should_trust, next) = find (\(_,c) => c.subject == current.issuer) (map (False,) untrusted <+> map (True,) trusted)
-  | Nothing => throwE $ "cannot find issuer for: " <+> show current
-  putStrLn $ show should_trust <+> " " <+> show next
-  case should_trust of
-    False => do
-      check_branch_certificate depth next
-      let True = verify_certificate_signature current next
-      | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
-      verify_certificate_chain (S depth) trusted untrusted next
-    True => do
-      -- replace the self signed certificate with the one we trust
-      let Just next = find (\c => c.subject == next.subject) trusted
-      | Nothing => throwE $ "root certificate not trusted: " <+> show next
-      check_branch_certificate depth next
-      let True = verify_certificate_signature current next
-      | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
-      pure ()
+  let alternate = map (True,) $ flatten $ do
+    ext <- extract_extension AuthorityKeyIdentifier current
+    let predicate = auth_key_id_predicate ext
+    pure $ filter predicate $ Lazy.fromList trusted
+
+  let in_chain = filter (\(_,c) => c.subject == current.issuer) (map (False,) untrusted <+> map (True,) trusted)
+  let all_candidates = fromList in_chain <+> alternate
+
+  case all_candidates of
+    [] => throwE $ "cannot find issuer for: " <+> show current
+    all => Lazy.choice $ map (\(should_trust,next) => go should_trust next current) all
+  where
+    go : Bool -> Certificate -> Certificate -> EitherT String io ()
+    go should_trust next current =
+      case should_trust of
+        False => do
+          check_branch_certificate depth next
+          let True = verify_certificate_signature current next
+          | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
+          verify_certificate_chain (S depth) trusted untrusted next
+        True => do
+          -- replace the self signed certificate with the one we trust
+          let Just next = find (\c => c.subject == next.subject) trusted
+          | Nothing => throwE $ "root certificate not trusted: " <+> show next
+          check_branch_certificate depth next
+          let True = verify_certificate_signature current next
+          | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
+          pure ()
 
 liftE : Monad m => Either a b -> EitherT a m b
 liftE x = MkEitherT $ pure x
@@ -141,7 +182,6 @@ certificate_check : List Certificate -> String -> CertificateCheck IO
 certificate_check trusted hostname cert = runEitherT $ do
   let certificates = body <$> cert.certificates
   ok <- liftE $ the _ $ traverse parse_certificate certificates
-  lift $ traverse_ (putStrLn . show) ok
   let identifer = to_identifier hostname
   let Just cert = find_certificate identifer ok
   | Nothing => throwE "cannot find certificate"

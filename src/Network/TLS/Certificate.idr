@@ -13,6 +13,7 @@ import Data.Bits
 import Data.String.Parser
 import Data.String.Extra
 import Crypto.Hash
+import Decidable.Equality
 
 public export
 data AttributeType : Type where
@@ -107,13 +108,24 @@ data ExtensionType : Type where
   BasicConstraint : ExtensionType
   KeyUsage : ExtensionType
   SubjectAltName : ExtensionType
+  AuthorityKeyIdentifier : ExtensionType
   UnknownExt : List Nat -> ExtensionType
+
+public export
+Eq ExtensionType where
+  BasicConstraint        ==  BasicConstraint         = True
+  KeyUsage               ==  KeyUsage                = True
+  SubjectAltName         ==  SubjectAltName          = True
+  AuthorityKeyIdentifier ==  AuthorityKeyIdentifier  = True
+  (UnknownExt x)         ==  (UnknownExt y)          = x == y
+  _ == _ = False
 
 public export
 Show ExtensionType where
   show BasicConstraint        = "BasicConstraint"
   show KeyUsage               = "KeyUsage"
   show SubjectAltName         = "SubjectAltName"
+  show AuthorityKeyIdentifier = "AuthorityKeyIdentifier"
   show (UnknownExt x)         = "UnknownExt (" <+> show x <+> ")"
 
 from_oid_ext : List Nat -> ExtensionType
@@ -122,6 +134,7 @@ from_oid_ext oid =
     [ 2, 5, 29, 15 ] => KeyUsage
     [ 2, 5, 29, 19 ] => BasicConstraint
     [ 2, 5, 29, 17 ] => SubjectAltName
+    [ 2, 5, 29, 35 ] => AuthorityKeyIdentifier
     _ => UnknownExt oid
 
 public export
@@ -157,6 +170,13 @@ Show GeneralName where
   show (IPv6Addr addr) = "IP Address: " <+> show addr
   show (UnknownGN _) = "<unknown>"
 
+public export
+Eq GeneralName where
+  (DNSName a)  == (DNSName b) = a == b
+  (IPv4Addr a) == (IPv4Addr b) = a == b
+  (IPv6Addr a) == (IPv6Addr b) = a == b
+  _ == _ = False
+
 extract_general_name : ASN1Token -> Either String GeneralName
 extract_general_name (ContextSpecific ** 2 ** UnknownPrimitive _ _ str) = Right $ DNSName $ ascii_to_string str
 extract_general_name (ContextSpecific ** 7 ** UnknownPrimitive _ _ str) =
@@ -171,10 +191,41 @@ record ExtSubjectAltName where
   general_names : List GeneralName
 
 public export
+record ExtAuthorityKeyIdentifier where
+  constructor MkExtAuthorityKeyIdentifier
+  key_identifier : Maybe (Vect 20 Bits8)
+  general_names : List GeneralName
+  serial_number : Maybe Integer
+
+extract_auth_key_id : List ASN1Token -> Either String (List ASN1Token, Maybe (Vect 20 Bits8))
+extract_auth_key_id [] = Right ([], Nothing)
+extract_auth_key_id ((ContextSpecific ** 0 ** UnknownPrimitive _ _ key) :: xs) =
+  (\c => (xs, Just c)) <$> (maybe_to_either (exactLength 20 $ fromList key) "invalid key id length")
+extract_auth_key_id (x :: xs) = Right ((x :: xs), Nothing)
+
+extract_auth_general_names : List ASN1Token -> Either String (List ASN1Token, List GeneralName)
+extract_auth_general_names [] = Right ([], [])
+extract_auth_general_names ((ContextSpecific ** 1 ** UnknownConstructed _ _ gns) :: xs) =
+  (xs,) <$> traverse extract_general_name gns
+extract_auth_general_names (x :: xs) = Right ((x :: xs), [])
+
+extract_auth_serial_no : List ASN1Token -> Either String (Maybe Integer)
+extract_auth_serial_no [] = Right Nothing
+extract_auth_serial_no ((ContextSpecific ** 2 ** UnknownPrimitive _ _ serial_no) :: []) = do
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z serial_no) (parse_integer $ length serial_no)
+  | (Pure leftover _) => Left $ "malformed serial number: leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed serial number: underfed"
+  pure $ Just ok
+extract_auth_serial_no (x :: []) = Right Nothing
+extract_auth_serial_no (x :: (y :: ys)) = Left "serial number is followed by unrecognized field"
+
+public export
 extension_type : ExtensionType -> Type
 extension_type BasicConstraint = ExtBasicConstraint
 extension_type KeyUsage = ExtKeyUsage
 extension_type SubjectAltName = ExtSubjectAltName
+extension_type AuthorityKeyIdentifier = ExtAuthorityKeyIdentifier
 extension_type _ = List Bits8
 
 parse_to_extension_type : (t : ExtensionType) -> List Bits8 -> Either String (extension_type t)
@@ -212,6 +263,19 @@ parse_to_extension_type SubjectAltName body = do
   let (Universal ** 16 ** Sequence content) = ok
   | _ => Left "malformed subject alt name: structure error"
   MkExtSubjectAltName <$> traverse extract_general_name content
+parse_to_extension_type AuthorityKeyIdentifier body = do
+  let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z body) parse_asn1
+  | (Pure leftover _) => Left $ "malformed subject authority key id ext: leftover: " <+> (xxd $ map get leftover)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed subject authority key id: underfed"
+  let (Universal ** 16 ** Sequence content) = ok
+  | _ => Left "malformed subject authority key id: structure error"
+
+  (content, key_id) <- extract_auth_key_id content
+  (content, gns) <- extract_auth_general_names content
+  sn <- extract_auth_serial_no content
+  pure $ MkExtAuthorityKeyIdentifier key_id gns sn
+
 parse_to_extension_type (UnknownExt x) body = Right body
 
 public export
@@ -221,24 +285,25 @@ record Extension where
   critical : Bool
   value : extension_type extension_id
 
-extract_extension : ASN1Token -> Either String Extension
-extract_extension (Universal ** 16 ** Sequence
-                  [ (Universal ** 6 ** OID oid)
-                  , (Universal ** 1 ** Boolean critical)
-                  , (Universal ** 4 ** OctetString value)
-                  ]) = let ext_id = from_oid_ext oid in (MkExt ext_id critical) <$> parse_to_extension_type ext_id value
-extract_extension (Universal ** 16 ** Sequence
-                  [ (Universal ** 6 ** OID oid)
-                  , (Universal ** 4 ** OctetString value)
-                  ]) = let ext_id = from_oid_ext oid in (MkExt ext_id False) <$> parse_to_extension_type ext_id value
-extract_extension _ = Left "malformed extension field"
-
 extract_extensions : List ASN1Token -> Either String (List Extension)
 extract_extensions [] = Right []
 extract_extensions (x :: xs) =
   case last (x :: xs) of
-    (ContextSpecific ** 3 ** UnknownConstructed _ _ [ (Universal ** 16 ** Sequence extensions) ]) => traverse extract_extension extensions
+    (ContextSpecific ** 3 ** UnknownConstructed _ _ [ (Universal ** 16 ** Sequence extensions) ]) => traverse extract_ext extensions
     _ => Left "malformed extension list field"
+  where
+    extract_ext : ASN1Token -> Either String Extension
+    extract_ext (Universal ** 16 ** Sequence
+                [ (Universal ** 6 ** OID oid)
+                , (Universal ** 1 ** Boolean critical)
+                , (Universal ** 4 ** OctetString value)
+                ]) = let ext_id = from_oid_ext oid in (MkExt ext_id critical) <$> parse_to_extension_type ext_id value
+    extract_ext (Universal ** 16 ** Sequence
+                [ (Universal ** 6 ** OID oid)
+                , (Universal ** 4 ** OctetString value)
+                ]) = let ext_id = from_oid_ext oid in (MkExt ext_id False) <$> parse_to_extension_type ext_id value
+    extract_ext _ = Left "malformed extension field"
+
 
 public export
 record Certificate where
@@ -278,22 +343,15 @@ is_self_signed : Certificate -> Bool
 is_self_signed cert = cert.issuer == cert.subject
 
 export
-extract_key_usage : Certificate -> Maybe ExtKeyUsage
-extract_key_usage cert = go cert.extensions
+extract_extension : (type : ExtensionType) -> Certificate -> Maybe (extension_type type)
+extract_extension type cert = go type cert.extensions
   where
-    go : List Extension -> Maybe ExtKeyUsage
-    go (MkExt KeyUsage _ ext :: xs) = Just ext
-    go (x :: xs) = go xs
-    go [] = Nothing
-
-export
-extract_basic_constraint : Certificate -> Maybe ExtBasicConstraint
-extract_basic_constraint cert = go cert.extensions
-  where
-    go : List Extension -> Maybe ExtBasicConstraint
-    go (MkExt BasicConstraint _ ext :: xs) = Just ext
-    go (x :: xs) = go xs
-    go [] = Nothing
+    go : (type : ExtensionType) -> List Extension -> Maybe (extension_type type)
+    go type (extension :: xs) =
+      case decEq @{FromEq} type extension.extension_id of
+        Yes ok => Just $ rewrite ok in extension.value
+        No _ => go type xs
+    go type [] = Nothing
 
 export
 parse_certificate : List Bits8 -> Either String Certificate
