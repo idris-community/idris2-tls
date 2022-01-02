@@ -35,7 +35,6 @@ modules = Crypto.RSA,
           Crypto.Random.JS,
           Network.TLS,
           Network.TLS.Core,
-          Network.TLS.Certificate,
           Network.TLS.Handshake,
           Network.TLS.HelloExtension,
           Network.TLS.Magic,
@@ -48,6 +47,8 @@ modules = Crypto.RSA,
           Network.TLS.Parse.DER,
           Network.TLS.Parse.PEM,
           Network.TLS.Signature,
+          Network.TLS.Certificate,
+          Network.TLS.Verify,
           Utils.Base64,
           Utils.Bytes,
           Utils.Misc,
@@ -60,7 +61,8 @@ modules = Crypto.RSA,
           Utils.Show,
           Utils.Network.C,
           Utils.Handle.C,
-          Utils.Time
+          Utils.Time,
+          Utils.IPAddr
 
 opts = "-Wno-shadowing"
 sourcedir = "src"

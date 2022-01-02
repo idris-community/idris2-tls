@@ -127,7 +127,7 @@ public export
 record ExtBasicConstraint where
   constructor MkExtBasicConstraint
   ca : Bool
-  pathLen : Maybe Nat
+  path_len : Maybe Nat
 
 public export
 record ExtKeyUsage where
@@ -252,6 +252,7 @@ record Certificate where
   sig_algorithm : (List Nat, List ASN1Token)
   signature_value : BitArray
   extensions : List Extension
+  raw_bytes : List Bits8
 
 public export
 Show Certificate where
@@ -269,6 +270,28 @@ certificate_subject_names cert = go (toList (DNSName <$> common_name)) cert.exte
         _ => go acc xs
     common_name : Maybe String
     common_name = lookup CommonName $ dn_attributes cert.subject
+
+export
+is_self_signed : Certificate -> Bool
+is_self_signed cert = cert.issuer == cert.subject
+
+export
+extract_key_usage : Certificate -> Maybe ExtKeyUsage
+extract_key_usage cert = go cert.extensions
+  where
+    go : List Extension -> Maybe ExtKeyUsage
+    go (MkExt KeyUsage _ ext :: xs) = Just ext
+    go (x :: xs) = go xs
+    go [] = Nothing
+
+export
+extract_basic_constraint : Certificate -> Maybe ExtBasicConstraint
+extract_basic_constraint cert = go cert.extensions
+  where
+    go : List Extension -> Maybe ExtBasicConstraint
+    go (MkExt BasicConstraint _ ext :: xs) = Just ext
+    go (x :: xs) = go xs
+    go [] = Nothing
 
 export
 parse_certificate : List Bits8 -> Either String Certificate
@@ -320,3 +343,4 @@ parse_certificate blob = do
       crt_signature_algorithm
       signature_value
       extensions
+      blob
