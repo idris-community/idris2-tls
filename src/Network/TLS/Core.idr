@@ -63,7 +63,7 @@ get_server_handshake_key hello = go hello.extensions
 
 public export
 CertificateCheck : (Type -> Type) -> Type
-CertificateCheck m = Certificate -> m Bool
+CertificateCheck m = Certificate -> m (Either String ())
 
 public export
 record TLSInitialState where
@@ -249,8 +249,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
           new = TLS3_ServerHello $ MkTLS3ServerHelloState a' h' (update consumed d') hk c'
       in tls3_serverhello_to_application_go new (map get leftover) cert_ok
     Pure leftover (_ ** Certificate x) => do
-      True <- MkEitherT $ map Right $ cert_ok x
-      | False => throwE "cannot verify certificate"
+      MkEitherT $ cert_ok x
       let consumed = plaintext `list_minus` leftover
       let new = TLS3_ServerHello $ MkTLS3ServerHelloState a' h' (update consumed d') hk c'
       tls3_serverhello_to_application_go new (map get leftover) cert_ok
@@ -341,8 +340,7 @@ serverhello2_to_servercert : Monad m => TLSState ServerHello2 -> List Bits8 -> C
 serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runEitherT $ do
   let Right (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) = parse_record b_cert alert_or_arecord2
   | _ => throwE "Parsing error: record not server_hello"
-  True <- MkEitherT $ map Right $ cert_ok server_cert
-  | False => throwE "cannot verify certificate"
+  MkEitherT $ cert_ok server_cert
   pure $ TLS2_ServerCertificate
        $ MkTLS2ServerCertificateState
            server_hello
