@@ -11,6 +11,7 @@ import Debug.Trace
 import Network.Socket
 import Network.TLS
 import Network.TLS.Certificate
+import Network.TLS.Magic
 import Network.TLS.Handle
 import Network.TLS.Handshake
 import Network.TLS.Parse.DER
@@ -48,7 +49,7 @@ tls_test trusted_cert_store target_hostname port = do
 
   let Right certs = parse_report_error [] certs_bin
   | Left err => putStrLn $ "error while parsing crt: " <+> err
-  putStrLn "done"
+  putStrLn $ "done, found " <+> show (length certs)
 
   Right sock <- socket AF_INET Stream 0
   | Left err => putStrLn $ "unable to create socket: " <+> show err
@@ -57,7 +58,14 @@ tls_test trusted_cert_store target_hostname port = do
   run $ do
     let handle = socket_to_handle sock
     -- perform handshake
-    (True # handle) <- tls_handshake target_hostname handle (certificate_check certs target_hostname)
+    (True # handle) <-
+      tls_handshake
+        target_hostname
+        (X25519 ::: [SECP256r1, SECP384r1])
+        supported_signature_algorithms
+        (tls13_supported_cipher_suites <+> tls12_supported_cipher_suites)
+        handle
+        (certificate_check certs target_hostname)
     | (False # (error # ())) => putStrLn error
 
     -- write data

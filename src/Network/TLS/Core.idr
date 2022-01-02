@@ -41,7 +41,17 @@ supported_groups = X25519 ::: [SECP256r1, X448, SECP384r1, SECP521r1]
 
 public export
 supported_signature_algorithms : List1 SignatureAlgorithm
-supported_signature_algorithms = ECDSA_SECP256r1_SHA256 ::: [RSA_PSS_RSAE_SHA256, RSA_PKCS1_SHA256]
+supported_signature_algorithms =
+  RSA_PKCS1_SHA256 :::
+  [ RSA_PKCS1_SHA384
+  , RSA_PKCS1_SHA512
+  , ECDSA_SECP256r1_SHA256
+  , ECDSA_SECP384r1_SHA384
+  , ECDSA_SECP521r1_SHA512
+  , RSA_PSS_RSAE_SHA256 
+  , RSA_PSS_RSAE_SHA384 
+  , RSA_PSS_RSAE_SHA512 
+  ]
 
 public export
 get_server_version : ServerHello -> TLSVersion

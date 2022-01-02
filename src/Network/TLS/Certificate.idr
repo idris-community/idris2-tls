@@ -12,6 +12,7 @@ import Data.Vect
 import Data.Bits
 import Data.String.Parser
 import Data.String.Extra
+import Crypto.Hash
 
 public export
 data AttributeType : Type where
@@ -249,6 +250,7 @@ record Certificate where
   valid_not_after : Integer
   subject : DistinguishedName
   cert_public_key : PublicKey
+  cert_public_key_id : Vect 20 Bits8
   sig_algorithm : (List Nat, List ASN1Token)
   signature_value : BitArray
   extensions : List Extension
@@ -321,7 +323,7 @@ parse_certificate blob = do
   let Just [ valid_not_before, valid_not_after ] = traverse {f=Maybe} extract_epoch valid_period
   | _ => Left "malformed validity timestamp"
 
-  key <- extract_key' certificate_public_key
+  (key_id, key) <- extract_key' certificate_public_key
 
   crt_algorithm <- maybe_to_either (extract_algorithm crt_algorithm) "malformed certificate algorithm"
   crt_signature_algorithm <- maybe_to_either (extract_algorithm crt_signature_algorithm) "malformed certificate signature algorithm"
@@ -340,6 +342,7 @@ parse_certificate blob = do
       valid_not_after
       subject
       key
+      key_id
       crt_signature_algorithm
       signature_value
       extensions

@@ -6,6 +6,7 @@ import Data.Nat
 import Data.Vect
 import public Crypto.Hash.Interfaces
 import public Crypto.Hash.SHA2
+import public Crypto.Hash.SHA1
 
 ||| basically `Hash.initialize` but with explicit type argument
 public export
