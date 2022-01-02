@@ -186,18 +186,25 @@ abstract_tlshandle x = MkHandle
   )
 
 export
-tls_handshake : (MonadRandom IO, LinearIO io) => String -> (1 _ : Handle' t_ok t_closed) -> CertificateCheck IO -> L1 io (Res Bool $ \ok => if ok then Handle' (TLSHandle' t_ok t_closed) t_closed else Res String (const t_closed))
-tls_handshake target_hostname handle cert_ok = do
+tls_handshake : (MonadRandom IO, LinearIO io) => 
+                String ->
+                List1 SupportedGroup ->
+                List1 SignatureAlgorithm ->
+                List1 CipherSuite ->
+                (1 _ : Handle' t_ok t_closed) ->
+                CertificateCheck IO ->
+                L1 io (Res Bool $ \ok => if ok then Handle' (TLSHandle' t_ok t_closed) t_closed else Res String (const t_closed))
+tls_handshake target_hostname supported_groups signature_algos cipher_suites handle cert_ok = do
   random <- liftIO1 $ random_bytes _
-  keypairs <- liftIO1 $ traverse gen_key (X25519 ::: [ SECP256r1, SECP384r1 ])
+  keypairs <- liftIO1 $ traverse gen_key supported_groups
   let
     (client_hello, state) =
       tls_init_to_clienthello $ TLS_Init $ MkTLSInitialState
         target_hostname
         random
         []
-        (tls13_supported_cipher_suites <+> tls12_supported_cipher_suites)
-        (RSA_PKCS1_SHA256 ::: [RSA_PSS_RSAE_SHA256, ECDSA_SECP256r1_SHA256])
+        cipher_suites
+        signature_algos
         keypairs
 
   (True # handle) <- write handle client_hello

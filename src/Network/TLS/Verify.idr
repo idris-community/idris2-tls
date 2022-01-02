@@ -115,9 +115,10 @@ verify_certificate_signature subject issuer = True
 
 verify_certificate_chain : HasIO io => Nat -> List Certificate -> List Certificate -> Certificate -> EitherT String io ()
 verify_certificate_chain depth trusted untrusted current = do
-  let Just next = find (\c => c.subject == current.issuer) (untrusted <+> trusted)
+  let Just (should_trust, next) = find (\(_,c) => c.subject == current.issuer) (map (False,) untrusted <+> map (True,) trusted)
   | Nothing => throwE $ "cannot find issuer for: " <+> show current
-  case next.subject == next.issuer of
+  putStrLn $ show should_trust <+> " " <+> show next
+  case should_trust of
     False => do
       check_branch_certificate depth next
       let True = verify_certificate_signature current next
@@ -140,6 +141,7 @@ certificate_check : List Certificate -> String -> CertificateCheck IO
 certificate_check trusted hostname cert = runEitherT $ do
   let certificates = body <$> cert.certificates
   ok <- liftE $ the _ $ traverse parse_certificate certificates
+  lift $ traverse_ (putStrLn . show) ok
   let identifer = to_identifier hostname
   let Just cert = find_certificate identifer ok
   | Nothing => throwE "cannot find certificate"
