@@ -315,7 +315,7 @@ record Certificate where
   subject : DistinguishedName
   cert_public_key : PublicKey
   cert_public_key_id : Vect 20 Bits8
-  sig_algorithm : (List Nat, Maybe ASN1Token)
+  sig_parameter : SignatureParameter 
   signature_value : BitArray
   extensions : List Extension
   raw_bytes : List Bits8
@@ -388,6 +388,8 @@ parse_certificate blob = do
   let True = fst crt_algorithm == fst crt_signature_algorithm
   | False => Left "tbsCertificate signature field does not match signature algorithm"
 
+  sig_param <- uncurry extract_signature_parameter crt_algorithm
+
   issuer <- maybe_to_either (extract_dn issuer) "malformed issuer"
   subject <- maybe_to_either (extract_dn subject) "malformed subject"
 
@@ -402,7 +404,7 @@ parse_certificate blob = do
       subject
       key
       key_id
-      crt_signature_algorithm
+      sig_param
       signature_value
       extensions
       blob
