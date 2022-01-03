@@ -84,6 +84,7 @@ constraint_parse (S len) pser = go (S len) pser
     b <- token
     go i (feed (singleton b) parser)
 
+export
 parse_length : (Monoid i, Cons (Posed Bits8) i) => Parser i (SimpleError String) Nat
 parse_length = do
   b <- p_get
@@ -103,6 +104,7 @@ extract_tag_type_bits x =
     get_bits : Bits8 -> Vect 2 Bool
     get_bits x = [ (testBit x 7), (testBit x 6) ]
 
+export
 parse_tag_id : (Monoid i, Cons (Posed Bits8) i) => Parser i (SimpleError String) (Bool, Tag)
 parse_tag_id = do
   b <- p_get

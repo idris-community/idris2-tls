@@ -2,6 +2,7 @@ module Network.TLS.Verify
 
 import Network.TLS
 import Network.TLS.Certificate
+import Network.TLS.Signature
 import Network.TLS.Handshake
 import Network.TLS.Parse.DER
 import Utils.Misc
@@ -113,8 +114,9 @@ check_branch_certificate depth cert = do
     cmp (Just a) b = b <= a
 
 -- TODO: implement this
-verify_certificate_signature : Certificate -> Certificate -> Bool
-verify_certificate_signature subject issuer = True
+verify_certificate_signature : Certificate -> Certificate -> Either String ()
+verify_certificate_signature subject issuer =
+  verify_signature subject.sig_parameter issuer.cert_public_key subject.tbs_raw_bytes subject.signature_value
 
 has_intersect : Eq a => List a -> List a -> Bool
 has_intersect [] y = False
@@ -144,6 +146,9 @@ flatten : Maybe (LazyList a) -> LazyList a
 flatten Nothing = []
 flatten (Just a) = a
 
+liftE : Monad m => Either a b -> EitherT a m b
+liftE x = MkEitherT $ pure x
+
 verify_certificate_chain : HasIO io => Nat -> List Certificate -> List Certificate -> Certificate -> EitherT String io ()
 verify_certificate_chain depth trusted untrusted current = do
   let alternate = map (True,) $ flatten $ do
@@ -163,20 +168,17 @@ verify_certificate_chain depth trusted untrusted current = do
       case should_trust of
         False => do
           check_branch_certificate depth next
-          let True = verify_certificate_signature current next
-          | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
+          let Right () = verify_certificate_signature current next
+          | Left err => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next <+> ", reason " <+> err
           verify_certificate_chain (S depth) trusted untrusted next
         True => do
           -- replace the self signed certificate with the one we trust
           let Just next = find (\c => c.subject == next.subject) trusted
           | Nothing => throwE $ "root certificate not trusted: " <+> show next
           check_branch_certificate depth next
-          let True = verify_certificate_signature current next
-          | False => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next
+          let Right () = verify_certificate_signature current next
+          | Left err => throwE $ "certificate failed for subject: " <+> show current <+> ", issuer: " <+> show next <+> ", reason " <+> err
           pure ()
-
-liftE : Monad m => Either a b -> EitherT a m b
-liftE x = MkEitherT $ pure x
 
 export
 certificate_check : List Certificate -> String -> CertificateCheck IO
