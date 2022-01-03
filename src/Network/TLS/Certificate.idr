@@ -318,7 +318,7 @@ record Certificate where
   sig_parameter : SignatureParameter 
   signature_value : BitArray
   extensions : List Extension
-  raw_bytes : List Bits8
+  tbs_raw_bytes : List Bits8
 
 public export
 Show Certificate where
@@ -351,6 +351,20 @@ extract_extension type cert = go type cert.extensions
         Yes ok => Just $ rewrite ok in extension.value
         No _ => go type xs
     go type [] = Nothing
+
+extract_tbs_raw_bytes : List Bits8 -> Either String (List Bits8)
+extract_tbs_raw_bytes blob = do
+  -- trim outer most layer
+  let (Pure outer _) = feed (map (uncurry MkPosed) $ enumerate Z blob) (parse_tag_id *> parse_length)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed certificate: underfed"
+  -- get the inner information
+  let (Pure inner len) = feed outer (parse_tag_id *> parse_length)
+  | (Fail err) => Left $ show err
+  | _ => Left "malformed tbs certificate: underfed"
+
+  let metadata = take (minus (length outer) (length inner)) outer
+  pure (map get metadata <+> map get (take len inner))
 
 export
 parse_certificate : List Bits8 -> Either String Certificate
@@ -395,6 +409,8 @@ parse_certificate blob = do
 
   extensions <- extract_extensions optional_fields
 
+  raw_tbs_bytes <- extract_tbs_raw_bytes blob
+
   pure $
     MkCertificate
       serial_number
@@ -407,4 +423,4 @@ parse_certificate blob = do
       sig_param
       signature_value
       extensions
-      blob
+      raw_tbs_bytes
