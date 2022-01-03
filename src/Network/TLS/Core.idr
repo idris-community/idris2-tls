@@ -276,16 +276,15 @@ list_minus a b = take (length a `minus` length b) a
 tls3_serverhello_to_application_go : Monad m =>
                                      TLSState ServerHello3 ->
                                      List Bits8 ->
-                                     Bool ->
                                      CertificateCheck m ->
                                      (EitherT String m (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
-tls3_serverhello_to_application_go og [] has_verified cert_ok = pure $ Left og
-tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState cert a' h' d' hk c')) plaintext has_verified cert_ok =
+tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
+tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState cert a' h' d' hk c')) plaintext cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
     Pure leftover (_ ** EncryptedExtensions x) =>
       let consumed = plaintext `list_minus` leftover
           new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
-      in tls3_serverhello_to_application_go new (map get leftover) False cert_ok
+      in tls3_serverhello_to_application_go new (map get leftover) cert_ok
     Pure leftover (_ ** Certificate x) => 
       case cert of
         HasCertificate _ => throwE "Certificate was sent twice"
@@ -293,41 +292,47 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
         NotVerified => do
           let consumed = plaintext `list_minus` leftover
           let new = TLS3_ServerHello $ MkTLS3ServerHelloState (HasCertificate x) a' h' (update consumed d') hk c'
-          tls3_serverhello_to_application_go new (map get leftover) False cert_ok
+          tls3_serverhello_to_application_go new (map get leftover) cert_ok
     Pure leftover (_ ** CertificateVerify x) => do
       certificate' <- case cert of
         NotVerified => throwE "CertificateVerify sent before Certificate"
         Verified => throwE "CertificateVerify sent after verification"
         HasCertificate cert => pure cert
-      let verify_token = string_to_ascii "TLS 1.3, server CertificateVerify" <+> [0x00] <+> toList (finalize d')
+      let verify_token =
+            replicate 64 0x20 -- 64 spaces
+              <+> string_to_ascii "TLS 1.3, server CertificateVerify"
+              <+> [ 0x00 ] -- null
+              <+> toList (finalize d')
       public_key <- MkEitherT $ cert_ok certificate'
       let Right () = verify_signature (sig_alg_get_params x.signature_algorithm) public_key verify_token x.signature
       | Left err => throwE $ "error while verifying handshake: " <+> err
       let consumed = plaintext `list_minus` leftover
-      let new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
-      tls3_serverhello_to_application_go new (map get leftover) True cert_ok
+      let new = TLS3_ServerHello $ MkTLS3ServerHelloState Verified a' h' (update consumed d') hk c'
+      tls3_serverhello_to_application_go new (map get leftover) cert_ok
     Pure [] (_ ** Finished x) =>
-      if not has_verified then throwE "CertificateVerify was not sent"
-      else if (tls13_verify_data algo hk.server_traffic_secret $ toList $ finalize d') == verify_data x
-         then
-           let digest = update plaintext d'
-               client_verify_data = tls13_verify_data algo hk.client_traffic_secret $ toList $ finalize digest
-               client_handshake_finished =
-                 to_application_data
-                 $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)}
-                 $ Finished
-                 $ MkFinished client_verify_data)
-               record_length = (length client_handshake_finished) + mac_length @{a'}
-               b_record = record_type_with_version_with_length.encode {i = List (Posed Bits8)} (ApplicationData, TLS12, record_length)
-               (eiv, chf_encrypted, chf_mac_tag) =
-                 encrypt @{a'} hk.client_handshake_key hk.client_handshake_iv zeros Z client_handshake_finished b_record
-               app_key = tls13_application_derive algo hk (toList $ finalize digest)
-               verify_data_wrapped = MkWrapper chf_encrypted chf_mac_tag
-               b_chf_wrapped =
-                 (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper chf_encrypted chf_mac_tag))
-           in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' app_key Z Z)
-         else
-           throwE "verify data does not match"
+      case cert of
+        Verified =>
+          if (tls13_verify_data algo hk.server_traffic_secret $ toList $ finalize d') == verify_data x
+          then
+            let digest = update plaintext d'
+                client_verify_data = tls13_verify_data algo hk.client_traffic_secret $ toList $ finalize digest
+                client_handshake_finished =
+                  to_application_data
+                  $ MkWrappedRecord Handshake ((with_id no_id_finished).encode {i = List (Posed Bits8)}
+                  $ Finished
+                  $ MkFinished client_verify_data)
+                record_length = (length client_handshake_finished) + mac_length @{a'}
+                b_record = record_type_with_version_with_length.encode {i = List (Posed Bits8)} (ApplicationData, TLS12, record_length)
+                (eiv, chf_encrypted, chf_mac_tag) =
+                  encrypt @{a'} hk.client_handshake_key hk.client_handshake_iv zeros Z client_handshake_finished b_record
+                app_key = tls13_application_derive algo hk (toList $ finalize digest)
+                verify_data_wrapped = MkWrapper chf_encrypted chf_mac_tag
+                b_chf_wrapped =
+                  (arecord {i = List (Posed Bits8)}).encode (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper chf_encrypted chf_mac_tag))
+            in pure $ Right (b_chf_wrapped, TLS3_Application $ MkTLS3ApplicationState a' app_key Z Z)
+          else
+            throwE "verify data does not match"
+        _ => throwE "CertificateVerify was not sent"
     Fail err => throwE $ "body: " <+> xxd plaintext <+> "\nbody length: " <+> (show $ length plaintext) <+> "\nparsing error: " <+> show err
     _ => throwE "failed to parse plaintext"
 
@@ -347,7 +352,7 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | Just ([_, alert], 0x15) => throwE $ "alert: " <+> (show $ id_to_alert_description alert)
   | Just (plaintext, i) => throwE $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
   | Nothing => throwE "plaintext is empty"
-  tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext False cert_ok
+  tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
 
 decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ApplicationState aead aead', List Bits8)
