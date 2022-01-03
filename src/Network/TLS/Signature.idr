@@ -66,41 +66,38 @@ extract_signature_parameter oid parameter = do
       pure $ RSA_PSS wit salt mgf
     _ => Left "unrecognized signature parameter"
   where
+    extract_hash_algo' : ASN1Token -> Either String (DPair Type Hash)
+    extract_hash_algo' (Universal ** 16 ** Sequence ((Universal ** 6 ** OID oid) :: _)) =
+      maybe_to_either (oid_to_hash_algorithm oid) "hash algorithm not recognized"
+    extract_hash_algo' _ = Left "malformed hash algorithm"
+
     extract_hash_algo : List ASN1Token -> Either String (DPair Type Hash, List ASN1Token)
     extract_hash_algo [] = Right (MkDPair Sha1 %search, [])
-    extract_hash_algo ((ContextSpecific ** 0 ** UnknownConstructed _ _ ((Universal ** 6 ** OID oid) :: _)) :: xs) =
-      (, xs) <$> maybe_to_either (oid_to_hash_algorithm oid) "hash algorithm not recognized"
-    extract_hash_algo ((Universal ** 16 ** Sequence ((Universal ** 6 ** OID oid) :: _)) :: xs) =
-      (, xs) <$> maybe_to_either (oid_to_hash_algorithm oid) "hash algorithm not recognized"
+    extract_hash_algo ((ContextSpecific ** 0 ** UnknownConstructed _ _ [ hash_algo ] ) :: xs) =
+      (, xs) <$> extract_hash_algo' hash_algo
     extract_hash_algo (x :: xs) = Right (MkDPair Sha1 %search, x :: xs)
 
     extract_mgf : List ASN1Token -> Either String (MaskGenerationFunction, List ASN1Token)
     extract_mgf [] = Right (mgf1 {algo=Sha1}, [])
-    extract_mgf ((ContextSpecific ** 1 ** UnknownConstructed _ _ ((Universal ** 6 ** OID oid) :: param)) :: xs) =
-      case map natToInteger oid of
-        [ 1, 2, 840, 113549, 1, 1, 8 ] => (\(wit,_) => (mgf1 @{wit.snd}, xs)) <$> extract_hash_algo param
-        _ => Left "mask generation function not recognized"
+    extract_mgf ((ContextSpecific ** 1 ** UnknownConstructed _ _ [ sequence ]) :: xs) =
+      case sequence of
+        ((Universal ** 16 ** Sequence ((Universal ** 6 ** OID oid) :: param :: []))) =>
+          case map natToInteger oid of
+            [ 1, 2, 840, 113549, 1, 1, 8 ] => (\wit => (mgf1 @{wit.snd}, xs)) <$> extract_hash_algo' param
+            _ => Left "mask generation function not recognized"
+        _ => Left "malformed mask generation function"
     extract_mgf (x :: xs) = Right (mgf1 {algo=Sha1}, x :: xs)
 
     extract_salt_len : List ASN1Token -> Either String (Nat, List ASN1Token)
     extract_salt_len [] = Right (20, [])
-    extract_salt_len ((ContextSpecific ** 2 ** UnknownPrimitive _ _ b_salt_len) :: xs) = do
-      let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z b_salt_len) (parse_integer $ length b_salt_len)
-      | (Pure leftover _) => Left $ "malformed salt length: leftover: " <+> (xxd $ map get leftover)
-      | (Fail err) => Left $ show err
-      | _ => Left "malformed salt length: underfed"
-      if ok < 0 then Left "negative salt len" else pure (integerToNat ok, xs)
+    extract_salt_len ((ContextSpecific ** 2 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal salt_len) ]) :: xs) =
+      if salt_len < 0 then Left "negative salt len" else pure (integerToNat salt_len, xs)
     extract_salt_len (x :: xs) = Right (20, x :: xs)
 
     extract_trailer : List ASN1Token -> Either String ()
     extract_trailer [] = Right ()
-    extract_trailer ((ContextSpecific ** 3 ** UnknownPrimitive _ _ b_trailer) :: []) = do
-      let (Pure [] 1) = feed (map (uncurry MkPosed) $ enumerate Z b_trailer) (parse_integer $ length b_trailer)
-      | (Pure [] trailer) => Left $ "wrong trailer version: " <+> show trailer
-      | (Pure leftover _) => Left $ "malformed trailer: leftover: " <+> (xxd $ map get leftover)
-      | (Fail err) => Left $ show err
-      | _ => Left "malformed trailer: underfed"
-      pure ()
+    extract_trailer [ (ContextSpecific ** 3 ** UnknownConstructed _ _ [ (Universal ** 2 ** IntVal trailer ) ]) ] =
+      if trailer /= 1 then Left "invalid trailer field" else pure ()
     extract_trailer (x :: xs) = Left "unrecognized field after trailer field"
 
 extract_rsa_key : List Bits8 -> Either String RSAPublicKey
@@ -146,6 +143,9 @@ extract_key' ok = do
   public_key <- case mapFst (map natToInteger) key_info of 
     -- PKCS #1 RSA Encryption
     ([1, 2, 840, 113549, 1, 1, 1], Just (Universal ** 5 ** Null)) =>
+      RsaPublicKey <$> extract_rsa_key content
+    -- RSA PSS
+    ([1, 2, 840, 113549, 1, 1, 10], Nothing) =>
       RsaPublicKey <$> extract_rsa_key content
     -- Elliptic Curve Public Key (RFC 5480)
     ([1, 2, 840, 10045, 2, 1], Just (Universal ** 6 ** OID group_id)) =>
