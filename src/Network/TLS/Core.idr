@@ -6,8 +6,11 @@ import Crypto.Curve.XCurves
 import Crypto.ECDH
 import Network.TLS.HKDF
 import Network.TLS.AEAD
+import Network.TLS.Signature
 import Crypto.Hash
+import Crypto.Hash.OID
 import Crypto.Random
+import Crypto.RSA
 import Data.Bits
 import Data.List
 import Data.List1
@@ -53,6 +56,21 @@ supported_signature_algorithms =
   , RSA_PSS_RSAE_SHA512 
   ]
 
+rsa_pss_params : (algo : _) -> (h : Hash algo) => SignatureParameter
+rsa_pss_params algo = RSA_PSS (algo ** h) (digest_nbyte {algo}) (mgf1 {algo})
+
+export
+sig_alg_get_params : SignatureAlgorithm -> SignatureParameter
+sig_alg_get_params RSA_PKCS1_SHA256 = RSA_PKCSv15 (MkDPair Sha256 %search)
+sig_alg_get_params RSA_PKCS1_SHA384 = RSA_PKCSv15 (MkDPair Sha384 %search)
+sig_alg_get_params RSA_PKCS1_SHA512 = RSA_PKCSv15 (MkDPair Sha512 %search)
+sig_alg_get_params ECDSA_SECP256r1_SHA256 = ECDSA (MkDPair Sha256 %search)
+sig_alg_get_params ECDSA_SECP384r1_SHA384 = ECDSA (MkDPair Sha384 %search)
+sig_alg_get_params ECDSA_SECP521r1_SHA512 = ECDSA (MkDPair Sha512 %search)
+sig_alg_get_params RSA_PSS_RSAE_SHA256 = rsa_pss_params Sha256
+sig_alg_get_params RSA_PSS_RSAE_SHA384 = rsa_pss_params Sha384
+sig_alg_get_params RSA_PSS_RSAE_SHA512 = rsa_pss_params Sha512
+
 public export
 get_server_version : ServerHello -> TLSVersion
 get_server_version hello = go hello.extensions
@@ -73,7 +91,7 @@ get_server_handshake_key hello = go hello.extensions
 
 public export
 CertificateCheck : (Type -> Type) -> Type
-CertificateCheck m = Certificate -> m (Either String ())
+CertificateCheck m = Certificate -> m (Either String PublicKey)
 
 public export
 record TLSInitialState where
@@ -93,8 +111,14 @@ record TLSClientHelloState where
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
 export
+data TLS3ServerHelloVerificationState : Type where
+  NotVerified : TLS3ServerHelloVerificationState
+  HasCertificate : Certificate -> TLS3ServerHelloVerificationState
+  Verified : TLS3ServerHelloVerificationState
+
+export
 data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
-  MkTLS3ServerHelloState : (a' : AEAD a) -> (h' : Hash h) -> h ->
+  MkTLS3ServerHelloState : TLS3ServerHelloVerificationState -> (a' : AEAD a) -> (h' : Hash h) -> h ->
                            HandshakeKeys (fixed_iv_length {a=a}) (enc_key_length {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
 
 export
@@ -229,7 +253,7 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
       shared_secret <- maybe_to_either (key_exchange group pk $ toList state.dh_keys) "server sent invalid key"
       let (aead ** awit) = ciphersuite_to_aead_type server_hello.cipher_suite
       let hk = tls13_handshake_derive hash_algo (fixed_iv_length {a=aead}) (enc_key_length {a=aead}) shared_secret $ toList $ finalize digest_state
-      Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState awit hwit digest_state hk Z
+      Right $ Right $ TLS3_ServerHello $ MkTLS3ServerHelloState NotVerified awit hwit digest_state hk Z
     TLS12 =>
       let (hash_algo ** hwit) = ciphersuite_to_prf_type server_hello.cipher_suite
           digest_state = update (drop 5 b_server_hello) $ update state.b_client_hello $ init hash_algo
@@ -241,35 +265,50 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
 
 decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ServerHelloState aead aead' algo algo', List Bits8)
-decrypt_hs_s_wrapper (MkTLS3ServerHelloState a' h' digest_state hk counter) (MkWrapper ciphertext mac_tag) record_header =
+decrypt_hs_s_wrapper (MkTLS3ServerHelloState cert a' h' digest_state hk counter) (MkWrapper ciphertext mac_tag) record_header =
   case decrypt @{a'} hk.server_handshake_key hk.server_handshake_iv zeros zeros counter ciphertext (const record_header) $ toList mac_tag of
     (_, False) => Nothing
-    (plaintext, True) => Just (MkTLS3ServerHelloState a' h' digest_state hk (S counter), plaintext)
+    (plaintext, True) => Just (MkTLS3ServerHelloState cert a' h' digest_state hk (S counter), plaintext)
 
 list_minus : List a -> List b -> List a
 list_minus a b = take (length a `minus` length b) a
 
-tls3_serverhello_to_application_go : Monad m => TLSState ServerHello3 -> List Bits8 -> CertificateCheck m ->
-                                              (EitherT String m (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
-tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
-tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) plaintext cert_ok =
+tls3_serverhello_to_application_go : Monad m =>
+                                     TLSState ServerHello3 ->
+                                     List Bits8 ->
+                                     Bool ->
+                                     CertificateCheck m ->
+                                     (EitherT String m (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
+tls3_serverhello_to_application_go og [] has_verified cert_ok = pure $ Left og
+tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState cert a' h' d' hk c')) plaintext has_verified cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
     Pure leftover (_ ** EncryptedExtensions x) =>
       let consumed = plaintext `list_minus` leftover
-          new = TLS3_ServerHello $ MkTLS3ServerHelloState a' h' (update consumed d') hk c'
-      in tls3_serverhello_to_application_go new (map get leftover) cert_ok
-    Pure leftover (_ ** Certificate x) => do
-      MkEitherT $ cert_ok x
+          new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
+      in tls3_serverhello_to_application_go new (map get leftover) False cert_ok
+    Pure leftover (_ ** Certificate x) => 
+      case cert of
+        HasCertificate _ => throwE "Certificate was sent twice"
+        Verified => throwE "Certificate was sent after verification"
+        NotVerified => do
+          let consumed = plaintext `list_minus` leftover
+          let new = TLS3_ServerHello $ MkTLS3ServerHelloState (HasCertificate x) a' h' (update consumed d') hk c'
+          tls3_serverhello_to_application_go new (map get leftover) False cert_ok
+    Pure leftover (_ ** CertificateVerify x) => do
+      certificate' <- case cert of
+        NotVerified => throwE "CertificateVerify sent before Certificate"
+        Verified => throwE "CertificateVerify sent after verification"
+        HasCertificate cert => pure cert
+      let verify_token = string_to_ascii "TLS 1.3, server CertificateVerify" <+> [0x00] <+> toList (finalize d')
+      public_key <- MkEitherT $ cert_ok certificate'
+      let Right () = verify_signature (sig_alg_get_params x.signature_algorithm) public_key verify_token x.signature
+      | Left err => throwE $ "error while verifying handshake: " <+> err
       let consumed = plaintext `list_minus` leftover
-      let new = TLS3_ServerHello $ MkTLS3ServerHelloState a' h' (update consumed d') hk c'
-      tls3_serverhello_to_application_go new (map get leftover) cert_ok
-    Pure leftover (_ ** CertificateVerify x) =>
-      -- TODO: add code to check
-      let consumed = plaintext `list_minus` leftover
-          new = TLS3_ServerHello $ MkTLS3ServerHelloState a' h' (update consumed d') hk c'
-      in tls3_serverhello_to_application_go new (map get leftover) cert_ok
+      let new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
+      tls3_serverhello_to_application_go new (map get leftover) True cert_ok
     Pure [] (_ ** Finished x) =>
-      if (tls13_verify_data algo hk.server_traffic_secret $ toList $ finalize d') == verify_data x
+      if not has_verified then throwE "CertificateVerify was not sent"
+      else if (tls13_verify_data algo hk.server_traffic_secret $ toList $ finalize d') == verify_data x
          then
            let digest = update plaintext d'
                client_verify_data = tls13_verify_data algo hk.client_traffic_secret $ toList $ finalize digest
@@ -295,7 +334,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
 public export
 tls3_serverhello_to_application : Monad m => TLSState ServerHello3 -> List Bits8 -> CertificateCheck m ->
                                               m (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
-tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerHelloState a' h' d' hk c')) b_wrapper cert_ok = runEitherT $ do
+tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerHelloState cert a' h' d' hk c')) b_wrapper cert_ok = runEitherT $ do
   let Right (MkDPair _ (ApplicationData application_data)) = parse_record b_wrapper alert_or_arecord
   | Right (MkDPair _ (ChangeCipherSpec _)) => pure $ Left og
   | Left err => throwE err
@@ -308,7 +347,7 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | Just ([_, alert], 0x15) => throwE $ "alert: " <+> (show $ id_to_alert_description alert)
   | Just (plaintext, i) => throwE $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
   | Nothing => throwE "plaintext is empty"
-  tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
+  tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext False cert_ok
 
 decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ApplicationState aead aead', List Bits8)
@@ -346,11 +385,10 @@ encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_c
   in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
 
 public export
-serverhello2_to_servercert : Monad m => TLSState ServerHello2 -> List Bits8 -> CertificateCheck m -> m (Either String (TLSState ServerCert2))
-serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runEitherT $ do
-  let Right (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) = parse_record b_cert alert_or_arecord2
-  | _ => throwE "Parsing error: record not server_hello"
-  MkEitherT $ cert_ok server_cert
+serverhello2_to_servercert : TLSState ServerHello2 -> List Bits8 -> Either String (TLSState ServerCert2)
+serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
+  (MkDPair _ (Handshake [MkDPair _ (Certificate server_cert)])) <- parse_record b_cert alert_or_arecord2
+  | _ => Left "Parsing error: record not server_hello"
   pure $ TLS2_ServerCertificate
        $ MkTLS2ServerCertificateState
            server_hello
@@ -361,12 +399,12 @@ serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert cert_ok = runE
            (update @{server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
 
 public export
-servercert_to_serverkex : TLSState ServerCert2 -> List Bits8 -> Either String (TLSState ServerKEX2)
-servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
-  (MkDPair _ (Handshake [MkDPair _ (ServerKeyExchange server_kex)])) <- parse_record b_kex alert_or_arecord2
-  | _ => Left $ "Parsing error: record not server_hello"
+servercert_to_serverkex : Monad m => TLSState ServerCert2 -> List Bits8 -> CertificateCheck m -> m (Either String (TLSState ServerKEX2))
+servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex cert_ok = runEitherT $ do
+  let Right (MkDPair _ (Handshake [MkDPair _ (ServerKeyExchange server_kex)])) = parse_record b_kex alert_or_arecord2
+  | _ => throwE "Parsing error: record not server_hello"
   let Just shared_secret = key_exchange (server_kex.server_pk_group) (server_kex.server_pk_body) (toList server_cert.dh_keys)
-  | Nothing => Left "cannot parse server public key"
+  | Nothing => throwE "cannot parse server public key"
   let (aead ** awit) = ciphersuite_to_aead_type server_cert.cipher_suite
   let app_key =
         tls12_application_derive server_cert.digest_wit
@@ -377,16 +415,24 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex = do
           (toList server_cert.server_hello.client_random)
           (toList server_cert.server_hello.server_random)
   let Just (_, chosen_pk) = find (\(g,_) => g == server_kex.server_pk_group) $ toList $ map (uncurry encode_public_keys) server_cert.dh_keys
-  | Nothing => Left "cannot find public key that match the server's"
-  -- TODO: check if key is signed by the certificate
-  Right $ TLS2_ServerKEX
-        $ MkTLS2ServerKEXState
-            awit
-            server_cert.digest_wit
-            (update @{server_cert.digest_wit} (drop 5 b_kex) server_cert.digest_state)
-            (ciphersuite_to_verify_data_len server_cert.cipher_suite)
-            chosen_pk
-            app_key
+  | Nothing => throwE "cannot find public key that match the server's"
+  let (curve_info_a, curve_info_b) = supported_group_to_id server_kex.server_pk_group
+  let verify_token =
+        toList server_cert.server_hello.client_random
+        <+> toList server_cert.server_hello.server_random
+        <+> [ curve_info_a, curve_info_b ]
+        <+> server_kex.server_pk_body
+  public_key <- MkEitherT $ cert_ok server_cert.certificate
+  let Right () = verify_signature (sig_alg_get_params server_kex.signature_algo) public_key verify_token server_kex.signature_body
+  | Left err => throwE $ "error while verifying handshake: " <+> err
+  pure $ TLS2_ServerKEX
+       $ MkTLS2ServerKEXState
+           awit
+           server_cert.digest_wit
+           (update @{server_cert.digest_wit} (drop 5 b_kex) server_cert.digest_state)
+           (ciphersuite_to_verify_data_len server_cert.cipher_suite)
+           chosen_pk
+           app_key
 
 encrypt_to_wrapper2 : AEAD a => Vect (enc_key_length {a=a}) Bits8 -> Vect (fixed_iv_length {a=a}) Bits8 -> Vect (mac_key_length {a=a}) Bits8 ->
                       List Bits8 -> RecordType -> Nat -> List Bits8
@@ -422,6 +468,7 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h'
         update client_verify_data digest_state
   Right (TLS2_ServerKEXDone $ MkTLS2ServerKEXDoneState $ MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key
         , b_client_kex <+> b_client_change_cipher_spec <+> b_client_verify_data)
+
 public export
 serverhellodone_to_applicationready2 : TLSState ServerKEXDone2 -> List Bits8 -> Either String (TLSState AppReady2)
 serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changecipherspec = do

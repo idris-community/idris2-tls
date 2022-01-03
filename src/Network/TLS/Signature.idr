@@ -32,12 +32,12 @@ Show PublicKey where
   show (EcdsaPublicKey _) = "ECDSA Public Key"
 
 export
-verify_signature : SignatureParameter -> PublicKey -> List Bits8 -> BitArray -> Either String ()
-verify_signature (RSA_PKCSv15 hash_wit) (RsaPublicKey public_key) message (MkBitArray 0 signature) =
+verify_signature : SignatureParameter -> PublicKey -> List Bits8 -> List Bits8 -> Either String ()
+verify_signature (RSA_PKCSv15 hash_wit) (RsaPublicKey public_key) message signature =
   if rsassa_pkcs1_v15_verify @{hash_wit.snd} public_key message signature then pure () else Left "signature does not match message"
-verify_signature (RSA_PSS hash_wit salt_len mgf) (RsaPublicKey public_key) message (MkBitArray 0 signature) =
+verify_signature (RSA_PSS hash_wit salt_len mgf) (RsaPublicKey public_key) message signature =
   if rsassa_pss_verify' @{hash_wit.snd} mgf salt_len public_key message signature then pure () else Left "signature does not match message"
-verify_signature (ECDSA hash_wit) (EcdsaPublicKey public_key) message (MkBitArray 0 signature) = do
+verify_signature (ECDSA hash_wit) (EcdsaPublicKey public_key) message signature = do
   let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z signature) parse_asn1
   | (Pure leftover _) => Left "parser overfed for ecdsa signature"
   | (Fail err) => Left $ "parser error for ecdsasignature: " <+> show err
@@ -48,6 +48,11 @@ verify_signature (ECDSA hash_wit) (EcdsaPublicKey public_key) message (MkBitArra
   if ecdsa_verify (be_to_integer digest) (MkSignature public_key (x, y)) then pure () else Left "signature does not match message"
 
 verify_signature _ _ message signature = Left "public key does not match signature scheme"
+
+export
+verify_signature' : SignatureParameter -> PublicKey -> List Bits8 -> BitArray -> Either String ()
+verify_signature' param public_key message (MkBitArray 0 signature) = verify_signature param public_key message signature
+verify_signature' param public_key message (MkBitArray n signature) = Left $ "invalid padding: " <+> show n
 
 export
 extract_algorithm : ASN1Token -> Maybe (List Nat, Maybe ASN1Token)

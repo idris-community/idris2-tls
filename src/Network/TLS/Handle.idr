@@ -76,13 +76,13 @@ tls2_handshake state handle cert_ok = do
   (True # (b_cert # handle)) <- read_record handle
   | (False # other) => pure1 (False # other)
 
-  Right state <- liftIO1 $ serverhello2_to_servercert state b_cert cert_ok
+  let Right state = serverhello2_to_servercert state b_cert
   | Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
 
   (True # (b_skex # handle)) <- read_record handle
   | (False # other) => pure1 (False # other)
 
-  let Right state = servercert_to_serverkex state b_skex
+  Right state <- liftIO1 $ servercert_to_serverkex state b_skex cert_ok
   | Left error => (close handle) >>= (\s => pure1 (False # (error # s)))
 
   (True # (b_s_hello_done # handle)) <- read_record handle
