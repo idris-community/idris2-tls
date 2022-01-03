@@ -12,95 +12,11 @@ import Data.Vect
 import Utils.Misc
 import Utils.Bytes
 import Data.Stream
-
-record Sha (0 block_nbyte : Nat) (0 word_type : Type) where
-  constructor MkSha
-  hash_values : Vect 5 word_type
-  buffer_nbyte : Nat
-  buffer_nbyte_constraint : LT buffer_nbyte block_nbyte
-  buffer : Vect buffer_nbyte Bits8
-  npassed_blocks : Nat
+import Crypto.Hash.MerkleDamgard
 
 export
 data Sha1 : Type where
-  MkSha1 : Sha 64 Bits32 -> Sha1
-
-mk_sha : (init_hash_values : Vect 5 word_type) -> {auto 0 prf : LTE 1 block_nbyte} -> Sha block_nbyte word_type
-mk_sha x {prf = LTESucc prf'} = MkSha x 0 (LTESucc LTEZero) [] 0
-
-pad_lemma : {residue_nbyte, length_nbyte, residue_max_nbyte, block_nbyte : Nat}
-  -> LTE 1 block_nbyte
-  -> (residue_max_nbyte + 1 + length_nbyte = block_nbyte)
-  -> LTE residue_nbyte residue_max_nbyte
-  -> (plus residue_nbyte (S (plus (minus residue_max_nbyte residue_nbyte) length_nbyte))) = block_nbyte
-pad_lemma remilia flandre sakuya =
-  rewrite sym flandre in
-  rewrite sym $ plusSuccRightSucc residue_nbyte (plus (minus residue_max_nbyte residue_nbyte) length_nbyte) in
-  rewrite plusAssociative residue_nbyte (minus residue_max_nbyte residue_nbyte) length_nbyte in
-  rewrite plusCommutative residue_nbyte (minus residue_max_nbyte residue_nbyte) in
-  rewrite plusMinusLte residue_nbyte residue_max_nbyte sakuya in
-  rewrite plusCommutative residue_max_nbyte 1 in
-    Refl
-
-pad_over_lemma : {residue_nbyte, length_nbyte, residue_max_nbyte, block_nbyte : Nat}
-  -> (residue_max_nbyte + 1 + length_nbyte = block_nbyte)
-  -> LT residue_nbyte block_nbyte
-  -> plus residue_nbyte (S (plus (plus (minus block_nbyte residue_nbyte) residue_max_nbyte) length_nbyte)) = (plus block_nbyte (plus block_nbyte 0))
-pad_over_lemma flandre cirno =
-  rewrite sym $ plusSuccRightSucc residue_nbyte (plus (plus (minus block_nbyte residue_nbyte) residue_max_nbyte) length_nbyte) in
-  rewrite plusAssociative residue_nbyte (plus (minus block_nbyte residue_nbyte) residue_max_nbyte) length_nbyte in
-  rewrite plusAssociative residue_nbyte (minus block_nbyte residue_nbyte) residue_max_nbyte in
-  rewrite plusCommutative residue_nbyte (minus block_nbyte residue_nbyte) in
-  rewrite plusMinusLte residue_nbyte block_nbyte (lteSuccLeft cirno) in
-  rewrite sym $ plusAssociative block_nbyte residue_max_nbyte length_nbyte in
-  rewrite plusSuccRightSucc block_nbyte (plus residue_max_nbyte length_nbyte) in
-  rewrite plusZeroRightNeutral block_nbyte in
-  rewrite flandre' in
-    Refl
-  where
-  flandre' : S (plus residue_max_nbyte length_nbyte) = block_nbyte
-  flandre' = rewrite sym flandre in rewrite plusCommutative residue_max_nbyte 1 in Refl
-
-pad_residue : {residue_nbyte, length_nbyte, residue_max_nbyte, block_nbyte : _}
-  -> (0 _ : LTE 1 block_nbyte)
-  -> (0 _ : (residue_max_nbyte + 1 + length_nbyte = block_nbyte))
-  -> (0 _ : LTE residue_nbyte residue_max_nbyte)
-  -> Vect residue_nbyte Bits8
-  -> Vect length_nbyte Bits8
-  -> Vect block_nbyte Bits8
-pad_residue remilia flandre sakuya residue b_length =
-   replace_vect (pad_lemma remilia flandre sakuya) $
-     residue
-     ++ [0b10000000]
-     ++ replicate (minus residue_max_nbyte residue_nbyte) 0
-     ++ b_length
-
-pad_over_residue : {residue_nbyte, length_nbyte, residue_max_nbyte, block_nbyte : _}
-  -> (0 _ : LTE 1 block_nbyte)
-  -> (0 _ : residue_max_nbyte + 1 + length_nbyte = block_nbyte)
-  -> (0 _ : LT residue_max_nbyte residue_nbyte)
-  -> (0 _ : LT residue_nbyte block_nbyte)
-  -> Vect residue_nbyte Bits8
-  -> Vect length_nbyte Bits8
-  -> Vect (2 * block_nbyte) Bits8
-pad_over_residue remilia flandre rumia cirno residue b_length =
-  replace_vect (pad_over_lemma flandre cirno) $
-    residue
-    ++ [0b10000000]
-    ++ replicate (minus block_nbyte residue_nbyte + residue_max_nbyte) 0
-    ++ b_length
-
-pad_theorem : {residue_nbyte, length_nbyte, residue_max_nbyte, block_nbyte : _}
-  -> (0 _ : LTE 1 block_nbyte)
-  -> (0 _ : residue_max_nbyte + 1 + length_nbyte = block_nbyte)
-  -> (0 _ : LT residue_nbyte block_nbyte)
-  -> Vect residue_nbyte Bits8
-  -> Vect length_nbyte Bits8
-  -> Either (Vect block_nbyte Bits8) (Vect (block_nbyte + block_nbyte) Bits8)
-pad_theorem remilia flandre cirno input b_length =
-  case isLTE residue_nbyte residue_max_nbyte of
-    Yes sakuya => Left $ pad_residue remilia flandre sakuya input b_length
-    No rumia => Right $ replace_vect (cong (plus block_nbyte) (plusZeroRightNeutral block_nbyte)) $ pad_over_residue remilia flandre (notLTEImpliesGT rumia) cirno input b_length
+  MkSha1 : MerkleDamgard 5 64 Bits32 -> Sha1
 
 sha1_init_hash_values : Vect 5 Bits32
 sha1_init_hash_values =
@@ -158,6 +74,6 @@ export
 Hash Sha1 where
   block_nbyte = 64
   digest_nbyte = 20
-  initialize = MkSha1 $ mk_sha sha1_init_hash_values
+  initialize = MkSha1 $ mk_merkle_damgard sha1_init_hash_values
   update = sha1_update
   finalize = sha1_finalize

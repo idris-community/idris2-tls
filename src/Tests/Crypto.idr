@@ -7,6 +7,7 @@ import Crypto.Random.C
 import Crypto.AES.Common
 import Crypto.AES.Small
 import Crypto.AES.Big
+import Crypto.Hash
 import Data.Vect
 import Utils.Bytes
 import Utils.Misc
