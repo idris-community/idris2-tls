@@ -15,11 +15,16 @@ import Crypto.Curve.Weierstrass
 import Crypto.Hash
 import Crypto.Hash.OID
 
-
 public export
 data PublicKey : Type where
   RsaPublicKey : RSAPublicKey -> PublicKey
   EcdsaPublicKey : Point p => p -> PublicKey
+
+public export
+data SignatureParameter : Type where
+  RSA_PKCSv15 : (DPair Type RegisteredHash) -> SignatureParameter
+  RSA_PSS : (wit : DPair Type Hash) -> (salt_len : Nat) -> MaskGenerationFunction -> SignatureParameter
+  ECDSA : DPair Type Hash -> SignatureParameter
 
 export
 Show PublicKey where
@@ -31,6 +36,72 @@ extract_algorithm : ASN1Token -> Maybe (List Nat, Maybe ASN1Token)
 extract_algorithm (Universal ** 16 ** Sequence [(Universal ** 6 ** OID algorithm)]) = Just (algorithm, Nothing)
 extract_algorithm (Universal ** 16 ** Sequence ((Universal ** 6 ** OID algorithm) :: parameter :: [])) = Just (algorithm, Just parameter)
 extract_algorithm _ = Nothing
+
+export
+oid_to_hash_algorithm : List Nat -> Maybe (DPair Type Hash)
+oid_to_hash_algorithm oid =
+  case map natToInteger oid of 
+    [ 1, 3, 14, 3, 2, 26 ] => Just (MkDPair Sha1 %search)
+    [ 2, 16, 840, 1, 101, 3, 4, 2, 1 ] => Just (MkDPair Sha256 %search)
+    [ 2, 16, 840, 1, 101, 3, 4, 2, 2 ] => Just (MkDPair Sha384 %search)
+    [ 2, 16, 840, 1, 101, 3, 4, 2, 3 ] => Just (MkDPair Sha512 %search)
+    _ => Nothing
+
+export
+extract_signature_parameter : List Nat -> Maybe ASN1Token -> Either String SignatureParameter
+extract_signature_parameter oid parameter = do
+  case (map natToInteger oid, parameter) of
+    ([1, 2, 840, 113549, 1, 1, 5], Just (Universal ** 5 ** Null)) =>  Right (RSA_PKCSv15 $ MkDPair Sha1 %search)
+    ([1, 2, 840, 113549, 1, 1, 11], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha256 %search)
+    ([1, 2, 840, 113549, 1, 1, 12], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha384 %search)
+    ([1, 2, 840, 113549, 1, 1, 13], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha512 %search)
+    ([1, 2, 840, 10045, 4, 3, 2], Nothing) => Right (ECDSA $ MkDPair Sha256 %search) 
+    ([1, 2, 840, 10045, 4, 3, 3], Nothing) => Right (ECDSA $ MkDPair Sha384 %search) 
+    ([1, 2, 840, 10045, 4, 3, 4], Nothing) => Right (ECDSA $ MkDPair Sha512 %search) 
+    ([1, 2, 840, 113549, 1, 1, 10], Just (Universal ** 16 ** Sequence params)) => do
+      (wit, params) <- extract_hash_algo params
+      (mgf, params) <- extract_mgf params
+      (salt, params) <- extract_salt_len params
+      extract_trailer params
+      pure $ RSA_PSS wit salt mgf
+    _ => Left "unrecognized signature parameter"
+  where
+    extract_hash_algo : List ASN1Token -> Either String (DPair Type Hash, List ASN1Token)
+    extract_hash_algo [] = Right (MkDPair Sha1 %search, [])
+    extract_hash_algo ((ContextSpecific ** 0 ** UnknownConstructed _ _ ((Universal ** 6 ** OID oid) :: _)) :: xs) =
+      (, xs) <$> maybe_to_either (oid_to_hash_algorithm oid) "hash algorithm not recognized"
+    extract_hash_algo ((Universal ** 16 ** Sequence ((Universal ** 6 ** OID oid) :: _)) :: xs) =
+      (, xs) <$> maybe_to_either (oid_to_hash_algorithm oid) "hash algorithm not recognized"
+    extract_hash_algo (x :: xs) = Right (MkDPair Sha1 %search, x :: xs)
+
+    extract_mgf : List ASN1Token -> Either String (MaskGenerationFunction, List ASN1Token)
+    extract_mgf [] = Right (mgf1 {algo=Sha1}, [])
+    extract_mgf ((ContextSpecific ** 1 ** UnknownConstructed _ _ ((Universal ** 6 ** OID oid) :: param)) :: xs) =
+      case map natToInteger oid of
+        [ 1, 2, 840, 113549, 1, 1, 8 ] => (\(wit,_) => (mgf1 @{wit.snd}, xs)) <$> extract_hash_algo param
+        _ => Left "mask generation function not recognized"
+    extract_mgf (x :: xs) = Right (mgf1 {algo=Sha1}, x :: xs)
+
+    extract_salt_len : List ASN1Token -> Either String (Nat, List ASN1Token)
+    extract_salt_len [] = Right (20, [])
+    extract_salt_len ((ContextSpecific ** 2 ** UnknownPrimitive _ _ b_salt_len) :: xs) = do
+      let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z b_salt_len) (parse_integer $ length b_salt_len)
+      | (Pure leftover _) => Left $ "malformed salt length: leftover: " <+> (xxd $ map get leftover)
+      | (Fail err) => Left $ show err
+      | _ => Left "malformed salt length: underfed"
+      if ok < 0 then Left "negative salt len" else pure (integerToNat ok, xs)
+    extract_salt_len (x :: xs) = Right (20, x :: xs)
+
+    extract_trailer : List ASN1Token -> Either String ()
+    extract_trailer [] = Right ()
+    extract_trailer ((ContextSpecific ** 3 ** UnknownPrimitive _ _ b_trailer) :: []) = do
+      let (Pure [] 1) = feed (map (uncurry MkPosed) $ enumerate Z b_trailer) (parse_integer $ length b_trailer)
+      | (Pure [] trailer) => Left $ "wrong trailer version: " <+> show trailer
+      | (Pure leftover _) => Left $ "malformed trailer: leftover: " <+> (xxd $ map get leftover)
+      | (Fail err) => Left $ show err
+      | _ => Left "malformed trailer: underfed"
+      pure ()
+    extract_trailer (x :: xs) = Left "unrecognized field after trailer field"
 
 extract_rsa_key : List Bits8 -> Either String RSAPublicKey
 extract_rsa_key pk_content = do

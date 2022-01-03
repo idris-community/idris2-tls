@@ -1,7 +1,6 @@
 module Crypto.Hash.OID
 
 import Crypto.Hash.Interfaces
-import Crypto.Hash.SHA2
 import Crypto.Hash
 import Data.Vect
 
@@ -40,6 +39,11 @@ der_digest_n_byte = header_n_byte {algo} + digest_nbyte {algo}
 export
 hashWithHeader : {algo : _} -> RegisteredHash algo => List Bits8 -> Vect (der_digest_n_byte {algo}) Bits8
 hashWithHeader plaintext = header {algo} ++ hash algo plaintext
+
+public export
+RegisteredHash Sha1 where
+  header_n_byte = 15
+  header = [ 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14 ]
 
 public export
 RegisteredHash Sha256 where

@@ -118,7 +118,12 @@ record PSSEncodedMessage n where
   hash_digest : Vect n Bits8
   db : List Bits8
 
-mgf1 : {algo : _} -> Hash algo => (n : Nat) -> List Bits8 -> Vect n Bits8
+public export
+MaskGenerationFunction : Type
+MaskGenerationFunction = (n : Nat) -> List Bits8 -> Vect n Bits8
+
+export
+mgf1 : {algo : _} -> (h : Hash algo) => MaskGenerationFunction
 mgf1 n seed = take n $ stream_concat $ map (\x => hash algo (seed <+> (toList $ integer_to_be 4 $ cast x))) nats
 
 export
@@ -128,8 +133,8 @@ modulus_bits (MkRSAPublicKey n _) = if n > 0 then go Z n else 0
     go : Nat -> Integer -> Nat
     go n x = if x == 0 then n else go (S n) (shiftR x 1)
 
-emsa_pss_verify : {algo : _} -> Hash algo => Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
-emsa_pss_verify sLen message em emBits = do
+emsa_pss_verify : {algo : _} -> (h : Hash algo) => MaskGenerationFunction -> Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
+emsa_pss_verify mgf sLen message em emBits = do
   let mHash = hash algo message
   let emLen = divCeilNZ emBits 8 SIsNonZero
   let (em, 0xbc) = uncons1 em
@@ -137,7 +142,7 @@ emsa_pss_verify sLen message em emBits = do
   (maskedDB, digest) <- splitLastAt1 (digest_nbyte {algo}) em
   -- check padding
   guard $ check_padding (modFinNZ emBits 8 SIsNonZero) (head maskedDB)
-  let db = zipWith xor (toList maskedDB) (toList $ mgf1 {algo} (length maskedDB) (toList digest))
+  let db = zipWith xor (toList maskedDB) (toList $ mgf (length maskedDB) (toList digest))
   (padding, salt) <- splitLastAt1 sLen db
   -- check padding
   guard (1 == be_to_integer padding)
@@ -149,14 +154,18 @@ emsa_pss_verify sLen message em emBits = do
     check_padding n b = 0 == shiftR b n
 
 export
-rsassa_pss_verify : {algo : _} -> Hash algo => RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
-rsassa_pss_verify pk message signature = isJust $ do
+rsassa_pss_verify' : {algo : _} -> (h : Hash algo) => MaskGenerationFunction -> Nat -> RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pss_verify' mask_gen salt_len pk message signature = isJust $ do
   let modBits = modulus_bits pk
   let s = os2ip signature
   m <- rsavp1 pk s
   let emLen = divCeilNZ (pred modBits) 8 SIsNonZero
   em <- i2osp emLen m >>= fromList
-  emsa_pss_verify {algo} (digest_nbyte {algo}) message em (pred modBits)
+  emsa_pss_verify {algo} mask_gen salt_len message em (pred modBits)
+
+export
+rsassa_pss_verify : {algo : _} -> Hash algo => RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
+rsassa_pss_verify = rsassa_pss_verify' {algo} (mgf1 {algo}) (digest_nbyte {algo})
 
 emsa_pkcs1_v15_encode : {algo : _} -> RegisteredHash algo => List Bits8 -> Nat -> Maybe (List Bits8)
 emsa_pkcs1_v15_encode message emLen = do
