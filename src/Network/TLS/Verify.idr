@@ -113,10 +113,9 @@ check_branch_certificate depth cert = do
     cmp Nothing _ = True
     cmp (Just a) b = b <= a
 
--- TODO: implement this
 verify_certificate_signature : Certificate -> Certificate -> Either String ()
 verify_certificate_signature subject issuer =
-  verify_signature subject.sig_parameter issuer.cert_public_key subject.tbs_raw_bytes subject.signature_value
+  verify_signature' subject.sig_parameter issuer.cert_public_key subject.tbs_raw_bytes subject.signature_value
 
 has_intersect : Eq a => List a -> List a -> Bool
 has_intersect [] y = False
@@ -190,3 +189,4 @@ certificate_check trusted hostname cert = runEitherT $ do
   | Nothing => throwE "cannot find certificate"
   check_leaf_certificate cert
   verify_certificate_chain Z trusted ok cert
+  pure cert.cert_public_key

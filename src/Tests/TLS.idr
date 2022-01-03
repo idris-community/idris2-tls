@@ -59,7 +59,6 @@ test_http_body hostname = "GET / HTTP/1.1\nHost: " <+> hostname <+> "\n\n"
 example_hostname : String
 example_hostname = "www.cloudflare.com"
 
---- TODO: this
 certificate_check : HasIO io => CertificateCheck io
 certificate_check certficiate = pure True
 
