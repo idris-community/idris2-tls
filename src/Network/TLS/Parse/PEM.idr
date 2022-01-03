@@ -10,13 +10,13 @@ import Utils.Misc
 
 public export
 record PEMBlob where
-  constructor MkPEMBlobk
+  constructor MkPEMBlob
   label : String
   content : List Bits8
 
 public export
 Show PEMBlob where
-  show (MkPEMBlobk label content) = label <+> ": " <+> xxd content
+  show (MkPEMBlob label content) = label <+> ": " <+> xxd content
 
 is_label_char : Char -> Bool
 is_label_char c = (not (isControl c)) && (c /= '-')
@@ -55,7 +55,7 @@ parse_pem_blob = do
   _ <- string "-----"
   spaces
   case base64_decode $ pack $ concat content of
-    Right str => pure $ MkPEMBlobk label str
+    Right str => pure $ MkPEMBlob label str
     Left  err => fail $ "failed parsing PEM content: " <+> err
 
 fold_string : String -> String

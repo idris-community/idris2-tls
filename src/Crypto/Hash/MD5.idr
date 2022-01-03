@@ -57,9 +57,6 @@ s_k_table = zip s_table k_table
 md5_init_hash_values : Vect 4 Bits32
 md5_init_hash_values = [ 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 ]
 
-vect_lookup : {n : Nat} -> {auto ok : NonZero n} -> Nat -> Vect n a -> a
-vect_lookup m v = index (modFinNZ m n ok) v
-
 md5_compress : (block : Vect 64 Bits8) -> (h : Vect 4 Bits32) -> Vect 4 Bits32
 md5_compress block hash_values = zipWith (+) hash_values $ go (_ ** zip calc_m_g s_k_table) hash_values
   where

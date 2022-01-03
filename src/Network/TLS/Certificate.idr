@@ -309,14 +309,13 @@ public export
 record Certificate where
   constructor MkCertificate
   serial_number : Integer
-  crt_algorithm : (List Nat, List ASN1Token)
   issuer : DistinguishedName
   valid_not_before : Integer
   valid_not_after : Integer
   subject : DistinguishedName
   cert_public_key : PublicKey
   cert_public_key_id : Vect 20 Bits8
-  sig_algorithm : (List Nat, List ASN1Token)
+  sig_algorithm : (List Nat, Maybe ASN1Token)
   signature_value : BitArray
   extensions : List Extension
   raw_bytes : List Bits8
@@ -386,6 +385,9 @@ parse_certificate blob = do
   crt_algorithm <- maybe_to_either (extract_algorithm crt_algorithm) "malformed certificate algorithm"
   crt_signature_algorithm <- maybe_to_either (extract_algorithm crt_signature_algorithm) "malformed certificate signature algorithm"
 
+  let True = fst crt_algorithm == fst crt_signature_algorithm
+  | False => Left "tbsCertificate signature field does not match signature algorithm"
+
   issuer <- maybe_to_either (extract_dn issuer) "malformed issuer"
   subject <- maybe_to_either (extract_dn subject) "malformed subject"
 
@@ -394,7 +396,6 @@ parse_certificate blob = do
   pure $
     MkCertificate
       serial_number
-      crt_algorithm
       issuer
       valid_not_before
       valid_not_after

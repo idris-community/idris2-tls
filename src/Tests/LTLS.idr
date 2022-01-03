@@ -32,12 +32,14 @@ test_http_body hostname = string_to_ascii $ "GET / HTTP/1.1\nHost: " <+> hostnam
 
 parse_report_error : List Certificate -> List PEMBlob -> Either String (List Certificate)
 parse_report_error acc [] = Right acc
-parse_report_error acc (x :: xs) =
-  case parse_certificate x.content of
+parse_report_error acc (x@(MkPEMBlob "CERTIFICATE" content) :: xs) =
+  case parse_certificate content of
     Right cert => parse_report_error (cert :: acc) xs
     Left err => Left $ "error: " <+> err <+> ", content:\n" <+> encode_pem_blob x
+parse_report_error acc ((MkPEMBlob type _) :: xs) = Left $ "unknown PEM type: " <+> type 
 
 -- Download it from https://wiki.mozilla.org/CA/Included_Certificates
+-- or just use "/etc/ssl/cert.pem"
 tls_test : String -> String -> Int -> IO ()
 tls_test trusted_cert_store target_hostname port = do
   putStrLn "reading cert store"
