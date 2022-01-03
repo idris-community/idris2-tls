@@ -18,19 +18,18 @@ import Crypto.Hash.OID
 
 public export
 data PublicKey : Type where
-  RsaPssRsaePublicKey : RSAPublicKey -> PublicKey
-  RsaPkcs15PublicKey : DPair Type RegisteredHash -> RSAPublicKey -> PublicKey
+  RsaPublicKey : RSAPublicKey -> PublicKey
   EcdsaPublicKey : Point p => p -> PublicKey
 
 export
 Show PublicKey where
-  show (RsaPssRsaePublicKey _) = "RSA PSS RSAE Key"
-  show (RsaPkcs15PublicKey _ _) = "RSA PKCS v1.5 Key"
-  show (EcdsaPublicKey _) = "ECDSA Key"
+  show (RsaPublicKey _) = "RSA Public Key"
+  show (EcdsaPublicKey _) = "ECDSA Public Key"
 
 export
-extract_algorithm : ASN1Token -> Maybe (List Nat, (List (t ** n ** ASN1 t n)))
-extract_algorithm (Universal ** 16 ** Sequence ((Universal ** 6 ** OID algorithm) :: parameter)) = Just (algorithm, parameter)
+extract_algorithm : ASN1Token -> Maybe (List Nat, Maybe ASN1Token)
+extract_algorithm (Universal ** 16 ** Sequence [(Universal ** 6 ** OID algorithm)]) = Just (algorithm, Nothing)
+extract_algorithm (Universal ** 16 ** Sequence ((Universal ** 6 ** OID algorithm) :: parameter :: [])) = Just (algorithm, Just parameter)
 extract_algorithm _ = Nothing
 
 extract_rsa_key : List Bits8 -> Either String RSAPublicKey
@@ -75,19 +74,10 @@ extract_key' ok = do
   -- natToInteger is needed because pattern matching list of Nat will kill my cpu big time
   public_key <- case mapFst (map natToInteger) key_info of 
     -- PKCS #1 RSA Encryption
-    ([1, 2, 840, 113549, 1, 1, 1], [(Universal ** 5 ** Null)]) =>
-      RsaPssRsaePublicKey <$> extract_rsa_key content
-    -- sha256WithRSAEncryption
-    ([1, 2, 840, 113549, 1, 1, 11], [(Universal ** 5 ** Null)]) =>
-      RsaPkcs15PublicKey (MkDPair Sha256 %search) <$> extract_rsa_key content
-    -- sha384WithRSAEncryption
-    ([1, 2, 840, 113549, 1, 1, 12], [(Universal ** 5 ** Null)]) =>
-      RsaPkcs15PublicKey (MkDPair Sha384 %search) <$> extract_rsa_key content
-    -- sha512WithRSAEncryption
-    ([1, 2, 840, 113549, 1, 1, 13], [(Universal ** 5 ** Null)]) =>
-      RsaPkcs15PublicKey (MkDPair Sha512 %search) <$> extract_rsa_key content
+    ([1, 2, 840, 113549, 1, 1, 1], Just (Universal ** 5 ** Null)) =>
+      RsaPublicKey <$> extract_rsa_key content
     -- Elliptic Curve Public Key (RFC 5480)
-    ([1, 2, 840, 10045, 2, 1], [(Universal ** 6 ** OID group_id)]) =>
+    ([1, 2, 840, 10045, 2, 1], Just (Universal ** 6 ** OID group_id)) =>
       extract_ecdsa_key content $ map natToInteger group_id
     _ => Left "unrecognized signature algorithm parameter"
 
@@ -101,4 +91,3 @@ extract_key der_public_key = do
   | (Fail err) => Left $ "parser error for SubjectPublicKeyInfo: " <+> show err
   | _ => Left "parser underfed for SubjectPublicKeyInfo"
   extract_key' ok
-

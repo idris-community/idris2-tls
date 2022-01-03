@@ -3,6 +3,7 @@ module Network.TLS.Verify
 import Network.TLS
 import Network.TLS.Certificate
 import Network.TLS.Handshake
+import Network.TLS.Parse.DER
 import Utils.Misc
 import Utils.Bytes
 import Data.String
@@ -145,6 +146,8 @@ flatten (Just a) = a
 
 verify_certificate_chain : HasIO io => Nat -> List Certificate -> List Certificate -> Certificate -> EitherT String io ()
 verify_certificate_chain depth trusted untrusted current = do
+  putStrLn $ show current <+> " sig oid: " <+> (show $ fst current.sig_algorithm)
+
   let alternate = map (True,) $ flatten $ do
     ext <- extract_extension AuthorityKeyIdentifier current
     let predicate = auth_key_id_predicate ext

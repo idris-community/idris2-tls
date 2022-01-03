@@ -37,9 +37,6 @@ The following groups are implemented, but not used in the linear TLS handle abst
 - X448
 - SECP521r1
 
-If you want to use these groups for key exchange, you would need to use the lower level TLS state abstraction. An
-example of how it would be done is in [TLS.idr](src/Tests/TLS.idr).
-
 Since most modern websites support key exchange with elliptic curves (and I can't figure out how RSA parameters are encoded), 
 RSA key exchange is not supported, nor do we consider implementing it by ourselves anytime soon.
 However, we may consider doing so in the future if there is enough demand.
@@ -76,7 +73,7 @@ Node / Javascript:
 
 If you have tested the `MonadRandom IO` implementation on any platforms which we have not tested, feel free to open a PR and change this `README.md`.
 
-If your own implementation of `MonadRandom IO` for whatever reasons, an example of how they are implemented can be found [here](src/Crypto/Random).
+If you need to write your own implementation of `MonadRandom IO` for whatever reasons, an example of how they are implemented can be found [here](src/Crypto/Random).
 
 We have also implemented our own bindings and library for C networking. The official network library is decidedly not used because it uses `String` for
 payloads. This makes handling NUL bytes extremely difficult since `String` is NUL terminated. Therefore, we made our own bindings which uses `List Bits8`
@@ -93,10 +90,11 @@ e.g. [timing attack](https://en.wikipedia.org/wiki/Timing_attack). The code has 
 have zero background in cryptography nor cybersecurity. Do not use this under the assumption that it is secure. Use at your own risk.
 
 # TODO
-- Certificate parsing
 - Verifying handshake keys with certificate
 - Certificate chain verification
 - OCSP stapling
+- Better documentation
+- Fix some bugs with socket reading
 
 # License
 This project is licensed under the ISC license. See [LICENSE](LICENSE).
