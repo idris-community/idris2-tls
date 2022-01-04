@@ -133,6 +133,7 @@ modulus_bits (MkRSAPublicKey n _) = if n > 0 then go Z n else 0
     go : Nat -> Integer -> Nat
     go n x = if x == 0 then n else go (S n) (shiftR x 1)
 
+export
 emsa_pss_verify : {algo : _} -> (h : Hash algo) => MaskGenerationFunction -> Nat -> List Bits8 -> List1 Bits8 -> Nat -> Maybe ()
 emsa_pss_verify mgf sLen message em emBits = do
   let mHash = hash algo message
@@ -144,6 +145,10 @@ emsa_pss_verify mgf sLen message em emBits = do
   guard $ check_padding (modFinNZ emBits 8 SIsNonZero) (head maskedDB)
   let db = zipWith xor (toList maskedDB) (toList $ mgf (length maskedDB) (toList digest))
   (padding, salt) <- splitLastAt1 sLen db
+  -- unset padding bits
+  bits_to_be_cleared <- natToFin (minus (8 * emLen) emBits) _
+  let mask = shiftR (the Bits8 oneBits) bits_to_be_cleared
+  let padding = (mask .&. head padding) ::: (tail padding)
   -- check padding
   guard (1 == be_to_integer padding)
   -- check salt length
@@ -167,6 +172,7 @@ export
 rsassa_pss_verify : {algo : _} -> Hash algo => RSAPublicKey -> List Bits8 -> List Bits8 -> Bool
 rsassa_pss_verify = rsassa_pss_verify' {algo} (mgf1 {algo}) (digest_nbyte {algo})
 
+export
 emsa_pkcs1_v15_encode : {algo : _} -> RegisteredHash algo => List Bits8 -> Nat -> Maybe (List Bits8)
 emsa_pkcs1_v15_encode message emLen = do
   let h = hashWithHeader {algo} message
