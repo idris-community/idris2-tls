@@ -425,7 +425,7 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex cert_ok = run
   let verify_token =
         toList server_cert.server_hello.client_random
         <+> toList server_cert.server_hello.server_random
-        <+> [ curve_info_a, curve_info_b ]
+        <+> [ 0x03, curve_info_a, curve_info_b, cast (length server_kex.server_pk_body) ] -- 0x03 hard coded, value for "named curve"
         <+> server_kex.server_pk_body
   public_key <- MkEitherT $ cert_ok server_cert.certificate
   let Right () = verify_signature (sig_alg_get_params server_kex.signature_algo) public_key verify_token server_kex.signature_body

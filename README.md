@@ -90,8 +90,6 @@ e.g. [timing attack](https://en.wikipedia.org/wiki/Timing_attack). The code has 
 have zero background in cryptography nor cybersecurity. Do not use this under the assumption that it is secure. Use at your own risk.
 
 # TODO
-- Verifying handshake keys with certificate
-- Certificate chain verification
 - OCSP stapling
 - Better documentation
 - Fix some bugs with socket reading
