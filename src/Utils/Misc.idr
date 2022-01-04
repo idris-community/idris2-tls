@@ -303,4 +303,3 @@ collapse_ordering (LT :: xs) = LT
 collapse_ordering (GT :: xs) = GT
 collapse_ordering (EQ :: xs) = collapse_ordering xs
 collapse_ordering [] = EQ
-

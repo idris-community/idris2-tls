@@ -19,7 +19,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-
       - name: Initialise variables
         run: |
           echo "$HOME/.idris2/bin" >> $GITHUB_PATH
@@ -46,6 +45,18 @@ jobs:
           cd idris2
           git checkout ${{ env.IDRIS2_COMMIT }}
           make bootstrap && make install
+
+      - name: Install idris2-elab-util
+        run: |
+          git clone https://github.com/stefan-hoeck/idris2-elab-util
+          cd idris2-elab-util
+          make install
+
+      - name: Install idris2-sop
+        run: |
+          git clone https://github.com/stefan-hoeck/idris2-sop
+          cd idris2-sop
+          make install
 
       - name: Checkout idris2-tls
         uses: actions/checkout@v2

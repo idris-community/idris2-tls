@@ -9,6 +9,9 @@ import Crypto.Hash
 import Crypto.ECDH
 import Crypto.Curve
 import Crypto.Curve.Weierstrass
+import Generics.Derive
+
+%language ElabReflection
 
 -- in TLS 1.3, the severity is implicit in the type of alert being sent, and the "level" field can safely be ignored
 public export
@@ -16,10 +19,7 @@ data AlertLevel : Type where
   Warning : AlertLevel
   Fatal : AlertLevel
 
-public export
-Show AlertLevel where
-  show Warning = "Warning"
-  show Fatal = "Fatal"
+%runElab derive "AlertLevel" [Generic, Meta, Eq, Show]
 
 public export
 alert_level_to_id : AlertLevel -> Bits8
@@ -62,35 +62,7 @@ data AlertDescription : Type where
   CertificateRequired : AlertDescription
   NoApplicationProtocol : AlertDescription
 
-public export
-Show AlertDescription where
-  show CloseNotify = "CloseNotify"
-  show UnexpectedMessage = "UnexpectedMessage"
-  show BadRecordMac = "BadRecordMac"
-  show RecordOverflow = "RecordOverflow"
-  show HandshakeFailure = "HandshakeFailure"
-  show BadCertificate = "BadCertificate"
-  show UnsupportedCertificate = "UnsupportedCertificate"
-  show CertificateRevoked = "CertificateRevoked"
-  show CertificateExpired = "CertificateExpired"
-  show CertificateUnknown = "CertificateUnknown"
-  show IllegalParameter = "IllegalParameter"
-  show UnknownCA = "UnknownCA"
-  show AccessDenied = "AccessDenied"
-  show DecodeError = "DecodeError"
-  show DecryptError = "DecryptError"
-  show ProtocolVersion = "ProtocolVersion"
-  show InsufficientSecurity = "InsufficientSecurity"
-  show InternalError = "InternalError"
-  show InappropriateFallback = "InappropriateFallback"
-  show UserCanceled = "UserCanceled"
-  show MissingExtension = "MissingExtension"
-  show UnsupportedExtension = "UnsupportedExtension"
-  show UnrecognizedName = "UnrecognizedName"
-  show BadCertificateStatusResponse = "BadCertificateStatusResponse"
-  show UnknownPskIdentity = "UnknownPskIdentity"
-  show CertificateRequired = "CertificateRequired"
-  show NoApplicationProtocol = "NoApplicationProtocol"
+%runElab derive "AlertDescription" [Generic, Meta, Eq, Show]
 
 public export
 alert_description_to_id : AlertDescription -> Bits8
@@ -161,22 +133,7 @@ data SupportedGroup : Type where
   SECP384r1 : SupportedGroup
   SECP521r1 : SupportedGroup
 
-public export
-Eq SupportedGroup where
-  X25519    == X25519    = True
-  X448      == X448      = True
-  SECP256r1 == SECP256r1 = True
-  SECP384r1 == SECP384r1 = True
-  SECP521r1 == SECP521r1 = True
-  _ == _ = False
-
-public export
-Show SupportedGroup where
-  show X25519    = "X25519"
-  show X448      = "X448"
-  show SECP256r1 = "SECP256r1"
-  show SECP384r1 = "SECP384r1"
-  show SECP521r1 = "SECP521r1"
+%runElab derive "SupportedGroup" [Generic, Meta, Eq, Show]
 
 public export
 supported_group_to_id : SupportedGroup -> (Bits8, Bits8)
@@ -225,19 +182,7 @@ data SignatureAlgorithm : Type where
   RSA_PSS_RSAE_SHA384    : SignatureAlgorithm
   RSA_PSS_RSAE_SHA512    : SignatureAlgorithm
 
-public export
-Show SignatureAlgorithm where
-  show RSA_PKCS1_SHA256       = "RSA_PKCS1_SHA256"
-  show RSA_PKCS1_SHA384       = "RSA_PKCS1_SHA384"
-  show RSA_PKCS1_SHA512       = "RSA_PKCS1_SHA512"
-
-  show ECDSA_SECP256r1_SHA256 = "ECDSA_SECP256r1_SHA256"
-  show ECDSA_SECP384r1_SHA384 = "ECDSA_SECP384r1_SHA384"
-  show ECDSA_SECP521r1_SHA512 = "ECDSA_SECP521r1_SHA512"
-
-  show RSA_PSS_RSAE_SHA256    = "RSA_PSS_RSAE_SHA256"
-  show RSA_PSS_RSAE_SHA384    = "RSA_PSS_RSAE_SHA384"
-  show RSA_PSS_RSAE_SHA512    = "RSA_PSS_RSAE_SHA512"
+%runElab derive "SignatureAlgorithm" [Generic, Meta, Eq, Show]
 
 public export
 signature_algorithm_to_id : SignatureAlgorithm -> (Bits8, Bits8)
@@ -273,9 +218,7 @@ public export
 data CompressionLevel : Type where
   Null : CompressionLevel
 
-public export
-Show CompressionLevel where
-  show Null = "Null"
+%runElab derive "CompressionLevel" [Generic, Meta, Eq, Show]
 
 public export
 compression_level_to_id : CompressionLevel -> Bits8
@@ -300,17 +243,7 @@ data CipherSuite : Type where
   TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 : CipherSuite
   TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 : CipherSuite
 
-public export
-Show CipherSuite where
-  show TLS_AES_128_GCM_SHA256 = "TLS_AES_128_GCM_SHA256"
-  show TLS_AES_256_GCM_SHA384 = "TLS_AES_256_GCM_SHA384"
-  show TLS_CHACHA20_POLY1305_SHA256 = "TLS_CHACHA20_POLY1305_SHA256"
-  show TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-  show TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 = "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
-  show TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
-  show TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
-  show TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 = "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
-  show TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"
+%runElab derive "CipherSuite" [Generic, Meta, Eq, Show]
 
 public export
 cipher_suite_to_id : CipherSuite -> (Bits8, Bits8)
@@ -382,21 +315,6 @@ data TLSVersion : Type where
   TLS13 : TLSVersion
 
 public export
-Eq TLSVersion where
-  TLS10 == TLS10 = True
-  TLS11 == TLS11 = True
-  TLS12 == TLS12 = True
-  TLS13 == TLS13 = True
-  _ == _ = False
-
-public export
-Show TLSVersion where
-  show TLS10 = "TLS10"
-  show TLS11 = "TLS11"
-  show TLS12 = "TLS12"
-  show TLS13 = "TLS13"
-
-public export
 tls_version_to_id : TLSVersion -> (Bits8, Bits8)
 tls_version_to_id TLS10 = (0x03, 0x01)
 tls_version_to_id TLS11 = (0x03, 0x02)
@@ -411,12 +329,7 @@ id_to_tls_version (0x03, 0x03) = Just TLS12
 id_to_tls_version (0x03, 0x04) = Just TLS13
 id_to_tls_version _ = Nothing
 
-public export
-Ord TLSVersion where
-  compare a b =
-    let (_, av) = tls_version_to_id a
-        (_, bv) = tls_version_to_id b
-    in compare av bv
+%runElab derive "TLSVersion" [Generic, Meta, Eq, Ord, Show]
 
 public export
 data ExtensionType : Type where
@@ -427,14 +340,7 @@ data ExtensionType : Type where
   KeyShare : ExtensionType
   Unknown : (Bits8, Bits8) -> ExtensionType
 
-public export
-Show ExtensionType where
-  show ServerName          = "ServerName"
-  show SupportedGroups     = "SupportedGroups"
-  show SupportedVersions   = "SupportedVersions"
-  show SignatureAlgorithms = "SignatureAlgorithms"
-  show KeyShare            = "KeyShare"
-  show (Unknown (a, b))    = "Unknown " <+> show_hex a <+> " " <+> show_hex b
+%runElab derive "ExtensionType" [Generic, Meta, Eq, Show]
 
 public export
 extension_type_to_id : ExtensionType -> (Bits8, Bits8)
@@ -467,18 +373,7 @@ data HandshakeType : Type where
   ServerHelloDone : HandshakeType
   ClientKeyExchange : HandshakeType
 
-public export
-Show HandshakeType where
-  show ClientHello = "ClientHello"
-  show ServerHello = "ServerHello"
-  show NewSessionTicket = "NewSessionTicket"
-  show EncryptedExtensions = "EncryptedExtensions"
-  show Certificate = "Certificate"
-  show CertificateVerify = "CertificateVerify"
-  show Finished = "Finished"
-  show ServerKeyExchange = "ServerKeyExchange"
-  show ServerHelloDone = "ServerHelloDone"
-  show ClientKeyExchange = "ClientKeyExchange"
+%runElab derive "HandshakeType" [Generic, Meta, Eq, Show]
 
 public export
 handshake_type_to_id : HandshakeType -> Bits8
@@ -514,20 +409,7 @@ data RecordType : Type where
   ApplicationData : RecordType
   Alert : RecordType
 
-public export
-Eq RecordType where
-  ChangeCipherSpec == ChangeCipherSpec = True
-  Handshake == Handshake = True
-  ApplicationData == ApplicationData = True
-  Alert == Alert = True
-  _ == _ = False
-
-public export
-Show RecordType where
-  show ChangeCipherSpec = "ChangeCipherSpec"
-  show Handshake = "Handshake"
-  show ApplicationData = "ApplicationData"
-  show Alert = "Alert"
+%runElab derive "RecordType" [Generic, Meta, Eq, Show]
 
 public export
 record_type_to_id : RecordType -> Bits8
