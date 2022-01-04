@@ -1,43 +1,22 @@
 -- BearSSL's "adding holes" algorithm for XOR multiplication
 -- Based on BearSSL ghash_ctmul64.c
 
-module Crypto.GF128
-
-import Control.Algebra
+module Crypto.Hash.GHash
 
 import Utils.Bytes
-
 import Data.Bits
+import Data.List
 import Data.Vect
 import Data.DPair
 import Data.Fin
 import Data.Fin.Extra
 import Data.Nat
 import Data.Nat.Order.Properties
+import Utils.Misc
+import Crypto.Hash
 
-public export
-data F128 : Type where
-  MkF128 : Vect 16 Bits8 -> F128
-
-public export
 HValues : Type
 HValues = (Bits64, Bits64, Bits64, Bits64, Bits64, Bits64)
-
-public export
-Eq F128 where
-  (==) (MkF128 a) (MkF128 b) = a == b
-
-public export
-Show F128 where
-  show (MkF128 x) = xxd $ toList x
-
-public export
-xor : F128 -> F128 -> F128
-xor (MkF128 x) (MkF128 y) = MkF128 $ zipWith xor x y
-
-public export
-zero : F128
-zero = MkF128 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 -- Carryless multiplication with "holes"
 bmul : Bits64 -> Bits64 -> Bits64
@@ -112,17 +91,15 @@ gmult_core y1 y0 (h0, h0r, h1, h1r, h2, h2r) =
       v2 = v2 `xor` (shiftL v1 63) `xor` (shiftL v1 62) `xor` (shiftL v1 57)
   in (v3, v2)
 
-export
-gcm_mult : HValues -> F128 -> F128
-gcm_mult h (MkF128 y) =
+gcm_mult : HValues -> Vect 16 Bits8 -> Vect 16 Bits8
+gcm_mult h y =
   let y1 = from_be $ take 8 y
       y0 = from_be $ drop 8 y
       (y1', y0') = gmult_core y1 y0 h
-  in MkF128 $ to_be {n=8} y1' ++ to_be y0'
+  in to_be {n=8} y1' ++ to_be y0'
 
-export
-mk_h_values : F128 -> HValues
-mk_h_values (MkF128 h) =
+mk_h_values : Vect 16 Bits8 -> HValues
+mk_h_values h =
   let h1  = from_be $ take 8 h
       h0  = from_be $ drop 8 h
       h0r = rev64 h0
@@ -130,3 +107,31 @@ mk_h_values (MkF128 h) =
       h2  = xor h0 h1
       h2r = xor h0r h1r
   in (h0, h0r, h1, h1r, h2, h2r)
+
+export
+data GHash : Type where
+  MkGHash : List Bits8 -> HValues -> Vect 16 Bits8 -> GHash
+
+splitAtExact : (n : Nat) -> List a -> Maybe (Vect n a, List a)
+splitAtExact n list =
+  let (a, b) = splitAt n list
+  in (, b) <$> exactLength n (fromList a)
+
+hash_until_done : GHash -> GHash
+hash_until_done ghash@(MkGHash buffer hval state) =
+  case splitAtExact 16 buffer of
+    Just (a, b) => hash_until_done $ MkGHash b hval (gcm_mult hval (zipWith xor a state))
+    Nothing => ghash
+
+export
+Digest GHash where
+  digest_nbyte = 16
+  update message (MkGHash buffer hval state) =
+    hash_until_done (MkGHash (buffer <+> message) hval state)
+  finalize (MkGHash buffer hval state) =
+    let (MkGHash _ _ state) = hash_until_done (MkGHash (pad_zero 16 buffer) hval state)
+    in state
+
+export
+MAC (Vect 16 Bits8) GHash where
+  initialize_mac key = MkGHash [] (mk_h_values key) (replicate _ 0)

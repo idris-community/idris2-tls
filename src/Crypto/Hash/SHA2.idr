@@ -89,25 +89,9 @@ sha256_finalize (MkSha256 s) =
       Left block => sha256_compress block s.hash_values
       Right blocks => let (x1, x2) = splitAt 64 blocks in sha256_compress x2 $ sha256_compress x1 s.hash_values
 
-export
-Hash Sha256 where
-  block_nbyte = 64
-  digest_nbyte = 32
-  initialize = MkSha256 $ mk_merkle_damgard sha256_init_hash_values
-  update = sha256_update
-  finalize = sha256_finalize
-
 sha224_init_hash_values : Vect 8 Bits32
 sha224_init_hash_values =
   [ 0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4 ]
-
-export
-Hash Sha224 where
-  block_nbyte = 64
-  digest_nbyte = 28
-  initialize = MkSha224 $ MkSha256 $ mk_merkle_damgard sha224_init_hash_values
-  update xs (MkSha224 s) = MkSha224 $ update xs s
-  finalize (MkSha224 s) = take _ $ finalize s
 
 sha512_init_hash_values : Vect 8 Bits64
 sha512_init_hash_values =
@@ -179,23 +163,51 @@ sha512_finalize (MkSha512 s) =
       Left block => sha512_compress block s.hash_values
       Right blocks => let (x1, x2) = splitAt 128 blocks in sha512_compress x2 $ sha512_compress x1 s.hash_values
 
-export
-Hash Sha512 where
-  block_nbyte = 128
-  digest_nbyte = 64
-  initialize = MkSha512 $ mk_merkle_damgard sha512_init_hash_values
-  update = sha512_update
-  finalize = sha512_finalize
-
 sha384_init_hash_values : Vect 8 Bits64
 sha384_init_hash_values =
   [ 0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939
   , 0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4 ]
 
 export
-Hash Sha384 where
-  block_nbyte = 128
+Digest Sha256 where
+  digest_nbyte = 32
+  update = sha256_update
+  finalize = sha256_finalize
+
+export
+Digest Sha224 where
+  digest_nbyte = 28
+  update xs (MkSha224 s) = MkSha224 $ update xs s
+  finalize (MkSha224 s) = take _ $ finalize s
+
+export
+Digest Sha512 where
+  digest_nbyte = 64
+  update = sha512_update
+  finalize = sha512_finalize
+
+export
+Digest Sha384 where
   digest_nbyte = 48
-  initialize = MkSha384 $ MkSha512 $ mk_merkle_damgard sha384_init_hash_values
   update xs (MkSha384 s) = MkSha384 $ update xs s
   finalize (MkSha384 s) = take _ $ finalize s
+
+export
+Hash Sha256 where
+  block_nbyte = 64
+  initialize = MkSha256 $ mk_merkle_damgard sha256_init_hash_values
+
+export
+Hash Sha224 where
+  block_nbyte = 64
+  initialize = MkSha224 $ MkSha256 $ mk_merkle_damgard sha224_init_hash_values
+
+export
+Hash Sha512 where
+  block_nbyte = 128
+  initialize = MkSha512 $ mk_merkle_damgard sha512_init_hash_values
+
+export
+Hash Sha384 where
+  block_nbyte = 128
+  initialize = MkSha384 $ MkSha512 $ mk_merkle_damgard sha384_init_hash_values

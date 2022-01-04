@@ -8,7 +8,8 @@ import Utils.Misc
 import Utils.Bytes
 import Crypto.AES.Big
 import Crypto.AES.Common
-import Crypto.GF128
+import Crypto.Hash
+import Crypto.Hash.GHash
 import Crypto.ChaCha
 
 public export
@@ -29,19 +30,6 @@ interface AEAD (0 a : Type) where
 aes_pad_iv_block : {iv : Nat} -> Vect iv Bits8 -> Stream (Vect (iv+4) Bits8)
 aes_pad_iv_block iv = map ((iv ++) . to_be . (cast {to=Bits32})) $ drop 2 nats
 
-pad : Nat -> List Bits8 -> List Bits8
-pad Z a = a
-pad (S n) a =
-  let l = length a
-      l = minus ((S n) * (divCeilNZ l (S n) SIsNonZero)) l
-  in a <+> replicate l 0
-
-toF128 : List Bits8 -> F128
-toF128 elem =
-  case exactLength 16 $ fromList $ take 16 elem of
-    Just v => MkF128 v
-    Nothing => toF128 (pad 16 elem)
-
 aes_keystream : (mode : Mode) -> Vect ((get_n_k mode) * 4) Bits8 -> Vect 12 Bits8 -> Stream Bits8
 aes_keystream mode key iv =
   stream_concat $ map (toList . encrypt_block mode key) (aes_pad_iv_block iv)
@@ -50,13 +38,9 @@ aes_gcm_create_aad : (mode : Mode) -> Vect ((get_n_k mode) * 4) Bits8 -> Vect 12
 aes_gcm_create_aad mode key iv aad ciphertext =
   let a = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length aad)
       c = toList $ to_be {n=8} $ cast {to=Bits64} $ 8 * (length ciphertext)
-      input = chunk 16 (pad 16 aad <+> pad 16 ciphertext <+> a <+> c)
-      h = mk_h_values
-        $ MkF128
-        $ encrypt_block mode key
-        $ map (const 0)
-        $ Fin.range
-      MkF128 output = foldl (\e,a => gcm_mult h $ xor a e) zero $ map toF128 input
+      input = pad_zero 16 aad <+> pad_zero 16 ciphertext <+> a <+> c
+      h = encrypt_block mode key (replicate _ 0)
+      output = mac GHash h input
       j0 = encrypt_block mode key (iv ++ (to_be $ the Bits32 1))
   in zipWith xor j0 output
 
@@ -165,7 +149,7 @@ chacha_create_aad polykey aad ciphertext =
   let (r, s) = bimap (clamp . le_to_integer) le_to_integer $ splitAt 16 $ take 32 polykey
       length_aad = toList $ to_le {n=8} $ cast {to=Bits64} $ length aad
       length_ciphertext = toList $ to_le {n=8} $ cast {to=Bits64} $ length ciphertext
-      ns = map (\x => le_to_integer (x <+> [0x01])) $ chunk 16 (pad 16 aad ++ pad 16 ciphertext ++ length_aad ++ length_ciphertext)
+      ns = map (\x => le_to_integer (x <+> [0x01])) $ chunk 16 (pad_zero 16 aad ++ pad_zero 16 ciphertext ++ length_aad ++ length_ciphertext)
   in integer_to_le 16 (s + foldl (\n,a => mul_mod r (a + n) poly1305_prime) 0 ns)
 
 public export

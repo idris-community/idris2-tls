@@ -71,9 +71,12 @@ sha1_finalize (MkSha1 s) =
       Right blocks => let (x1, x2) = splitAt 64 blocks in sha1_compress x2 $ sha1_compress x1 s.hash_values
 
 export
-Hash Sha1 where
-  block_nbyte = 64
+Digest Sha1 where
   digest_nbyte = 20
-  initialize = MkSha1 $ mk_merkle_damgard sha1_init_hash_values
   update = sha1_update
   finalize = sha1_finalize
+
+export
+Hash Sha1 where
+  block_nbyte = 64
+  initialize = MkSha1 $ mk_merkle_damgard sha1_init_hash_values

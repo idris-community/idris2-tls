@@ -1,6 +1,7 @@
 module Network.TLS.HKDF
 
 import Crypto.Hash
+import Crypto.Hash.HMAC
 import Data.Bits
 import Data.List
 import Data.Stream
@@ -11,7 +12,7 @@ import Utils.Misc
 
 public export
 hkdf_extract : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> Vect (digest_nbyte {algo}) Bits8
-hkdf_extract algo salt ikm = hmac algo salt ikm
+hkdf_extract algo salt ikm = mac (HMAC algo) salt ikm
 
 hkdf_expand_stream : (0 algo : Type) -> Hash algo => List Bits8 -> List Bits8 -> Stream Bits8
 hkdf_expand_stream algo prk info = stream_concat (snd <$> iterate go (Z, []))
@@ -20,7 +21,7 @@ hkdf_expand_stream algo prk info = stream_concat (snd <$> iterate go (Z, []))
     go (i, last) =
       let i' = cast {to=Bits8} (S i)
           body = last ++ info ++ [i']
-      in (S i, toList $ hmac algo prk body)
+      in (S i, toList $ mac (HMAC algo) prk body)
 
 public export
 hkdf_expand : (0 algo : Type) -> Hash algo => (l : Nat) -> List Bits8 -> List Bits8 -> Vect l Bits8
@@ -129,9 +130,9 @@ record Application2Keys (iv : Nat) (key : Nat) (mac : Nat) where
 hmac_stream : Hash algo -> List Bits8 -> List Bits8 -> Stream Bits8
 hmac_stream hwit secret seed =
   stream_concat
-  $ map (\ax => toList $ hmac algo secret $ ax <+> seed)
+  $ map (\ax => toList $ mac (HMAC algo) secret $ ax <+> seed)
   $ drop 1
-  $ iterate (toList . hmac algo secret) seed
+  $ iterate (toList . mac (HMAC algo) secret) seed
 
 public export
 tls12_application_derive : Hash algo -> (iv : Nat) -> (key : Nat) -> (mac : Nat) -> List Bits8 -> List Bits8 -> List Bits8 ->

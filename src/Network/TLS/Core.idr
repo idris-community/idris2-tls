@@ -23,6 +23,9 @@ import Utils.Misc
 import Utils.Parser
 import Control.Monad.Error.Either
 
+hash_to_digest : Hash algo -> Digest algo
+hash_to_digest = %search
+
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
 tls13_supported_cipher_suites =
@@ -401,7 +404,7 @@ serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
            server_hello.cipher_suite
            server_hello.dh_keys
            server_hello.digest_wit
-           (update @{server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
+           (update @{hash_to_digest server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
 
 public export
 servercert_to_serverkex : Monad m => TLSState ServerCert2 -> List Bits8 -> CertificateCheck m -> m (Either String (TLSState ServerKEX2))
@@ -434,7 +437,7 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex cert_ok = run
        $ MkTLS2ServerKEXState
            awit
            server_cert.digest_wit
-           (update @{server_cert.digest_wit} (drop 5 b_kex) server_cert.digest_state)
+           (update @{hash_to_digest server_cert.digest_wit} (drop 5 b_kex) server_cert.digest_state)
            (ciphersuite_to_verify_data_len server_cert.cipher_suite)
            chosen_pk
            app_key

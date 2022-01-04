@@ -303,3 +303,11 @@ collapse_ordering (LT :: xs) = LT
 collapse_ordering (GT :: xs) = GT
 collapse_ordering (EQ :: xs) = collapse_ordering xs
 collapse_ordering [] = EQ
+
+public export
+pad_zero : Nat -> List Bits8 -> List Bits8
+pad_zero Z a = a
+pad_zero (S n) a =
+  let l = length a
+      l = minus ((S n) * (divCeilNZ l (S n) SIsNonZero)) l
+  in a <+> replicate l 0
