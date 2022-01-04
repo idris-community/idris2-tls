@@ -98,9 +98,12 @@ md5_finalize (MkMD5 s) =
       Right blocks => let (x1, x2) = splitAt 64 blocks in md5_compress x2 $ md5_compress x1 s.hash_values
 
 export
-Hash MD5 where
-  block_nbyte = 64
+Digest MD5 where
   digest_nbyte = 16
-  initialize = MkMD5 $ mk_merkle_damgard md5_init_hash_values
   update = md5_update
   finalize = md5_finalize
+
+export
+Hash MD5 where
+  block_nbyte = 64
+  initialize = MkMD5 $ mk_merkle_damgard md5_init_hash_values

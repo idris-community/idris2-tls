@@ -8,6 +8,7 @@ import Crypto.AES.Common
 import Crypto.AES.Small
 import Crypto.AES.Big
 import Crypto.Hash
+import Crypto.Hash.HMAC
 import Data.Vect
 import Data.List1
 import Utils.Bytes
