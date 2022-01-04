@@ -4,6 +4,9 @@ import Data.Buffer
 import System.FFI
 import System.Info
 import Data.List
+import Generics.Derive
+
+%language ElabReflection
 
 %foreign "C:uname,libc"
 prim_io__uname : Buffer -> PrimIO Int
@@ -15,12 +18,7 @@ data OS : Type where
   Darwin  : OS
   Unix    : OS
 
-public export
-Show OS where
-  show Windows = "windows"
-  show Linux   = "linux"
-  show Darwin  = "darwin"
-  show Unix    = "unix"
+%runElab derive "OS" [Generic, Meta, Eq, Show]
 
 uname' : HasIO m => Buffer -> m String
 uname' buf = do

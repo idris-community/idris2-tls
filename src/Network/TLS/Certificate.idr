@@ -14,6 +14,9 @@ import Data.String.Parser
 import Data.String.Extra
 import Crypto.Hash
 import Decidable.Equality
+import Generics.Derive
+
+%language ElabReflection
 
 public export
 data AttributeType : Type where
@@ -26,17 +29,7 @@ data AttributeType : Type where
   SerialNumber : AttributeType
   UnknownAttr : List Nat -> AttributeType
 
-public export
-Eq AttributeType where
-  CommonName       == CommonName       = True
-  Organization     == Organization     = True
-  OrganizationUnit == OrganizationUnit = True
-  Country          == Country          = True
-  StateOrProvince  == StateOrProvince  = True
-  LocalityName     == LocalityName     = True
-  SerialNumber     == SerialNumber     = True
-  UnknownAttr x    == UnknownAttr y        = x == y
-  _ == _ = False
+%runElab derive "AttributeType" [Generic, Meta, Eq]
 
 public export
 Show AttributeType where
@@ -111,22 +104,7 @@ data ExtensionType : Type where
   AuthorityKeyIdentifier : ExtensionType
   UnknownExt : List Nat -> ExtensionType
 
-public export
-Eq ExtensionType where
-  BasicConstraint        ==  BasicConstraint         = True
-  KeyUsage               ==  KeyUsage                = True
-  SubjectAltName         ==  SubjectAltName          = True
-  AuthorityKeyIdentifier ==  AuthorityKeyIdentifier  = True
-  (UnknownExt x)         ==  (UnknownExt y)          = x == y
-  _ == _ = False
-
-public export
-Show ExtensionType where
-  show BasicConstraint        = "BasicConstraint"
-  show KeyUsage               = "KeyUsage"
-  show SubjectAltName         = "SubjectAltName"
-  show AuthorityKeyIdentifier = "AuthorityKeyIdentifier"
-  show (UnknownExt x)         = "UnknownExt (" <+> show x <+> ")"
+%runElab derive "ExtensionType" [Generic, Meta, Eq, DecEq, Show]
 
 from_oid_ext : List Nat -> ExtensionType
 from_oid_ext oid =
@@ -347,7 +325,7 @@ extract_extension type cert = go type cert.extensions
   where
     go : (type : ExtensionType) -> List Extension -> Maybe (extension_type type)
     go type (extension :: xs) =
-      case decEq @{FromEq} type extension.extension_id of
+      case decEq type extension.extension_id of
         Yes ok => Just $ rewrite ok in extension.value
         No _ => go type xs
     go type [] = Nothing

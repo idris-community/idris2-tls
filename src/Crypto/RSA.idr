@@ -148,11 +148,12 @@ emsa_pss_verify mgf sLen message em emBits = do
   -- unset padding bits
   bits_to_be_cleared <- natToFin (minus (8 * emLen) emBits) _
   let mask = shiftR (the Bits8 oneBits) bits_to_be_cleared
-  let padding = (mask .&. head padding) ::: (tail padding)
+  let (pxs, px) = uncons1 $ (mask .&. head padding) ::: (tail padding)
   -- check padding
-  guard (1 == be_to_integer padding)
+  guard (0 == (foldr (.|.) 0 pxs))
+  guard (1 == px)
   -- check salt length
-  guard $ digest `s_eq` hash algo ([0, 0, 0, 0, 0, 0, 0, 0] <+> toList mHash <+> toList salt)
+  guard $ digest `s_eq` hash algo (replicate 8 0 <+> toList mHash <+> toList salt)
   where
     check_padding : Fin 8 -> Bits8 -> Bool
     check_padding FZ _ = True

@@ -8,6 +8,9 @@ import Data.String
 import Data.Fin.Extra
 import Utils.Misc
 import Decidable.Equality
+import Generics.Derive
+
+%language ElabReflection
 
 public export
 data Month : Type where
@@ -23,21 +26,6 @@ data Month : Type where
   October : Month
   November : Month
   December : Month
-
-public export
-Show Month where
-  show January    = "January"
-  show February   = "February"
-  show March      = "March"
-  show April      = "April"
-  show May        = "May"
-  show June       = "June"
-  show July       = "July"
-  show August     = "August"
-  show September  = "September"
-  show October    = "October"
-  show November   = "November"
-  show December   = "December"
 
 export
 next_month : Month -> Month
@@ -164,25 +152,7 @@ month_num_of_dates _ October = 31
 month_num_of_dates _ November = 30
 month_num_of_dates _ December = 31
 
-public export
-Eq Month where
-  January   == January = True
-  February  == February = True
-  March     == March = True
-  April     == April = True
-  May       == May = True
-  June      == June = True
-  July      == July = True
-  August    == August = True
-  September == September = True
-  October   == October = True
-  November  == November = True
-  December  == December = True
-  _ == _ = False
-
-public export
-Ord Month where
-  a `compare` b = month_to_nat a `compare` month_to_nat b
+%runElab derive "Month" [Generic, Meta, DecEq, Eq, Ord, Show]
 
 public export
 data FinNonZero : Fin n -> Type where
@@ -215,7 +185,7 @@ Eq Date where
   a == b =
     case decEq a.year b.year of
       Yes prf0 =>
-        case decEq @{FromEq} a.month b.month of
+        case decEq a.month b.month of
           Yes prf1 => a.day == (rewrite prf0 in rewrite prf1 in b.day)
           No _ => False
       No _ => False
@@ -225,7 +195,7 @@ Ord Date where
   a `compare` b =
     case decEq a.year b.year of
       Yes prf0 =>
-        case decEq @{FromEq} a.month b.month of
+        case decEq a.month b.month of
           Yes prf1 =>
             let b_day = rewrite prf0 in rewrite prf1 in b.day
             in a.day `compare` b_day
