@@ -12,7 +12,7 @@ Not meant for production. Read the notes on security.
 This library depends on Stefan Hoeck's [idris2-sop](https://github.com/stefan-hoeck/idris2-sop) library to derive instances.
 
 # Example
-An example of how the TLS socket is used can be found [here](src/Tests/LTLS.idr).
+An example that send a HTTP request over TLS to server can be found [here](src/Tests/LTLS.idr).
 More examples on how to use the internal modules can be found in the [Tests](src/Tests) folder.
 
 # Support coverage
@@ -94,7 +94,6 @@ have zero background in cryptography nor cybersecurity. Do not use this under th
 
 # TODO
 - OCSP stapling
-- Better documentation
 
 # License
 This project is licensed under the ISC license. See [LICENSE](LICENSE).
