@@ -8,6 +8,9 @@ The project currently targets Idris2 compiler after the commit [a09c508](https:/
 This library aims to provide a TLS implementation in Idris that supports communication with most modern websites and provide reasonable performance.
 Not meant for production. Read the notes on security.
 
+# Dependencies
+This library depends on Stefan Hoeck's [idris2-sop](https://github.com/stefan-hoeck/idris2-sop) library to derive instances.
+
 # Example
 An example of how the TLS socket is used can be found [here](src/Tests/LTLS.idr).
 More examples on how to use the internal modules can be found in the [Tests](src/Tests) folder.
