@@ -112,11 +112,6 @@ export
 data GHash : Type where
   MkGHash : List Bits8 -> HValues -> Vect 16 Bits8 -> GHash
 
-splitAtExact : (n : Nat) -> List a -> Maybe (Vect n a, List a)
-splitAtExact n list =
-  let (a, b) = splitAt n list
-  in (, b) <$> exactLength n (fromList a)
-
 hash_until_done : GHash -> GHash
 hash_until_done ghash@(MkGHash buffer hval state) =
   case splitAtExact 16 buffer of
