@@ -311,3 +311,9 @@ pad_zero (S n) a =
   let l = length a
       l = minus ((S n) * (divCeilNZ l (S n) SIsNonZero)) l
   in a <+> replicate l 0
+
+public export
+splitAtExact : (n : Nat) -> List a -> Maybe (Vect n a, List a)
+splitAtExact n list =
+  let (a, b) = splitAt n list
+  in (, b) <$> exactLength n (fromList a)

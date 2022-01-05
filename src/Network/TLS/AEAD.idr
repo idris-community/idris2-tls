@@ -10,6 +10,7 @@ import Crypto.AES.Big
 import Crypto.AES.Common
 import Crypto.Hash
 import Crypto.Hash.GHash
+import Crypto.Hash.Poly1305
 import Crypto.ChaCha
 
 public export
@@ -138,19 +139,13 @@ AEAD TLS12_AES_256_GCM where
         mac_tag = aes_gcm_create_aad AES256 key iv' (aadf plaintext) ciphertext
     in (plaintext, s_eq' (toList mac_tag) mac_tag')
 
-clamp : Integer -> Integer
-clamp r = r .&. 0x0ffffffc0ffffffc0ffffffc0fffffff
-
-poly1305_prime : Integer
-poly1305_prime = 0x3fffffffffffffffffffffffffffffffb
-
 chacha_create_aad : Vect 64 Bits8 -> List Bits8 -> List Bits8 -> Vect 16 Bits8
 chacha_create_aad polykey aad ciphertext =
-  let (r, s) = bimap (clamp . le_to_integer) le_to_integer $ splitAt 16 $ take 32 polykey
+  let key = take 32 polykey
       length_aad = toList $ to_le {n=8} $ cast {to=Bits64} $ length aad
       length_ciphertext = toList $ to_le {n=8} $ cast {to=Bits64} $ length ciphertext
-      ns = map (\x => le_to_integer (x <+> [0x01])) $ chunk 16 (pad_zero 16 aad ++ pad_zero 16 ciphertext ++ length_aad ++ length_ciphertext)
-  in integer_to_le 16 (s + foldl (\n,a => mul_mod r (a + n) poly1305_prime) 0 ns)
+      input = pad_zero 16 aad ++ pad_zero 16 ciphertext ++ length_aad ++ length_ciphertext
+  in mac Poly1305 key input
 
 public export
 data TLS1213_ChaCha20_Poly1305 : Type where
