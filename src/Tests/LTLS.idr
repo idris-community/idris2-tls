@@ -6,6 +6,7 @@ import Crypto.Random.C
 import Data.Either
 import Data.List1
 import Data.String
+import Data.String.Extra
 import Data.String.Parser
 import Debug.Trace
 import Network.Socket
@@ -28,7 +29,18 @@ import Utils.Misc
 %hide Network.TLS.Handshake.Message.Certificate
 
 test_http_body : String -> List Bits8
-test_http_body hostname = string_to_ascii $ "GET / HTTP/1.1\nHost: " <+> hostname <+> "\n\n"
+test_http_body hostname =
+  string_to_ascii
+  $ join "\r\n"
+  [ "GET / HTTP/1.1"
+  , "Host: " <+> hostname
+  , "Connection: close"
+  , "User-Agent: curl"
+  , "Accept: */*"
+  , ""
+  , ""
+  , ""
+  ]
 
 parse_report_error : List Certificate -> List PEMBlob -> Either String (List Certificate)
 parse_report_error acc [] = Right acc
@@ -70,9 +82,12 @@ tls_test trusted_cert_store target_hostname port = do
         (certificate_check certs target_hostname)
     | (False # (error # ())) => putStrLn error
 
+    putStrLn "sending data over tls"
     -- write data
     (True # handle) <- write handle $ test_http_body target_hostname
     | (False # (error # ())) => putStrLn error
+
+    putStrLn "reading data over tls"
 
     -- read data
     (True # (output # handle)) <- read handle 100

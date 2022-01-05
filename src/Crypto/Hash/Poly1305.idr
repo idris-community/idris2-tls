@@ -21,9 +21,6 @@ record Bits128 where
   lo : Bits64
   hi : Bits64
 
-bits128_to_integer : Bits128 -> Integer
-bits128_to_integer b = (cast b.lo) .|. (shiftL (cast b.hi) 64)
-
 mask_low_2_bits : Bits64
 mask_low_2_bits  = 0x0000000000000003
 

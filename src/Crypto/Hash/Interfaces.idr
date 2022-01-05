@@ -16,4 +16,3 @@ interface Digest algo => Hash algo where
 public export
 interface Digest algo => MAC (0 key : Type) algo where
   initialize_mac : key -> algo
-

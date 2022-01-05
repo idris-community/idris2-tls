@@ -92,7 +92,6 @@ have zero background in cryptography nor cybersecurity. Do not use this under th
 # TODO
 - OCSP stapling
 - Better documentation
-- Fix some bugs with socket reading
 
 # License
 This project is licensed under the ISC license. See [LICENSE](LICENSE).

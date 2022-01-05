@@ -39,11 +39,11 @@ recv_bytes : HasIO m => Socket -> (max_size : Int) -> m (Either ErrorCode (List 
 recv_bytes sock max_size = do
   ptr <- malloc max_size
   ret <- primIO $ prim__socket_recv sock.descriptor ptr max_size 0
-  case ret < 0 of
-    True => do
+  case ret > 0 of
+    False => do
       free ptr
       pure $ Left ret
-    False => do
+    True => do
       bytes <- peek_bytes ptr 0 (cast {to = Nat} ret)
       free ptr
       pure $ Right $ toList bytes
