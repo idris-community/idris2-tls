@@ -26,11 +26,13 @@ import Control.Monad.Error.Either
 hash_to_digest : Hash algo -> Digest algo
 hash_to_digest = %search
 
+||| All the implemented TLS 1.3 cipher suites
 public export
 tls13_supported_cipher_suites : List1 CipherSuite
 tls13_supported_cipher_suites =
   TLS_AES_128_GCM_SHA256 ::: [ TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256 ]
 
+||| All the implemented TLS 1.2 cipher suites
 public export
 tls12_supported_cipher_suites : List1 CipherSuite
 tls12_supported_cipher_suites =
@@ -41,10 +43,12 @@ tls12_supported_cipher_suites =
   , TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
   , TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 ]
 
+||| All the implemented groups for key exchange
 public export
 supported_groups : List1 SupportedGroup
 supported_groups = X25519 ::: [SECP256r1, X448, SECP384r1, SECP521r1]
 
+||| All the implemented signature algorithms for handshake verification
 public export
 supported_signature_algorithms : List1 SignatureAlgorithm
 supported_signature_algorithms =
@@ -74,6 +78,12 @@ sig_alg_get_params RSA_PSS_RSAE_SHA256 = rsa_pss_params Sha256
 sig_alg_get_params RSA_PSS_RSAE_SHA384 = rsa_pss_params Sha384
 sig_alg_get_params RSA_PSS_RSAE_SHA512 = rsa_pss_params Sha512
 
+||| Get the server's TLS version from the ServerHello record
+||| Since TLS 1.3 records are masqueraded as TLS 1.2 records
+||| Using (.version) directly may not yield the current result
+||| This function checks for the SupportedVersions extension
+||| If there is one, the version specified in the extension will
+||| be used, otherwise, returns the specified version in the main body
 public export
 get_server_version : ServerHello -> TLSVersion
 get_server_version hello = go hello.extensions
@@ -83,6 +93,7 @@ get_server_version hello = go hello.extensions
   go ((SupportedVersions ** (SupportedVersions version)) :: xs) = version
   go (x :: xs) = go xs
 
+||| Get the server's handshake public key for key exchange
 public export
 get_server_handshake_key : ServerHello -> Either String (SupportedGroup, List Bits8)
 get_server_handshake_key hello = go hello.extensions
@@ -92,10 +103,15 @@ get_server_handshake_key hello = go hello.extensions
   go ((KeyShare ** (KeyShare x)) :: xs) = Right x
   go (x :: xs) = go xs
 
+||| A type alias for a function that will be used to verify handshake
+||| It takes a Certificate record extension, containing all the certificates
+||| as raw bytes, along with the certificate extensions fields, and returns a
+||| public key that will be used to verify the current handshake hash digest
 public export
 CertificateCheck : (Type -> Type) -> Type
 CertificateCheck m = Certificate -> m (Either String PublicKey)
 
+||| The initial TLS state, before any communication with the server is made
 public export
 record TLSInitialState where
   constructor MkTLSInitialState
@@ -106,6 +122,7 @@ record TLSInitialState where
   signature_algos : List1 SignatureAlgorithm
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
+||| The TLS state after sending client hello to the server
 export
 record TLSClientHelloState where
   constructor MkTLSClientHelloState
@@ -113,21 +130,25 @@ record TLSClientHelloState where
   client_random : Vect 32 Bits8
   dh_keys : List1 (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g)))
 
+||| ADT to represent the state of certificate verification in TLS 1.3 handshake
 export
 data TLS3ServerHelloVerificationState : Type where
   NotVerified : TLS3ServerHelloVerificationState
   HasCertificate : Certificate -> TLS3ServerHelloVerificationState
   Verified : TLS3ServerHelloVerificationState
 
+||| The TLS state after receiving server hello from a TLS 1.3 server
 export
 data TLS3ServerHelloState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
   MkTLS3ServerHelloState : TLS3ServerHelloVerificationState -> (a' : AEAD a) -> (h' : Hash h) -> h ->
                            HandshakeKeys (fixed_iv_length {a=a}) (enc_key_length {a=a}) -> Nat -> TLS3ServerHelloState a a' h h'
 
+||| The TLS state when communication over TLS 1.3 is ready
 export
 data TLS3ApplicationState : (aead : Type) -> AEAD aead -> Type where
   MkTLS3ApplicationState : (a' : AEAD a) -> ApplicationKeys (fixed_iv_length {a=a}) (enc_key_length {a=a}) -> Nat -> Nat -> TLS3ApplicationState a a'
 
+||| The TLS state after receiving server hello from a TLS 1.2 server
 export
 record TLS2ServerHelloState algo where
   constructor MkTLS2ServerHelloState
@@ -138,6 +159,7 @@ record TLS2ServerHelloState algo where
   digest_wit : Hash algo
   digest_state : algo
 
+||| The TLS state after receiving server certificate from a TLS 1.2 server
 export
 record TLS2ServerCertificateState algo where
   constructor MkTLS2ServerCertificateState
@@ -148,22 +170,29 @@ record TLS2ServerCertificateState algo where
   digest_wit : Hash algo
   digest_state : algo
 
+
+||| The TLS state after receiving server key exchange from a TLS 1.2 server
 export
 data TLS2ServerKEXState : (aead : Type) -> AEAD aead -> (algo : Type) -> Hash algo -> Type where
   MkTLS2ServerKEXState : (a' : AEAD a) -> (h' : Hash h) -> h -> Nat -> List Bits8 ->
                          (Application2Keys (fixed_iv_length @{a'}) (enc_key_length @{a'}) (mac_key_length @{a'})) ->
                          TLS2ServerKEXState a a' h h'
 
+||| The TLS state after receiving server key exchange done from a TLS 1.2 server
 export
 record TLS2ServerKEXDoneState a b c d where
   constructor MkTLS2ServerKEXDoneState
   kex_state : TLS2ServerKEXState a b c d
 
+||| The TLS state after receiving change cipher spec done from a TLS 1.2 server
+||| This indicates the server will now begin communicating over an encrypted channel,
+||| and that the server is ready to receive application data from the client
 export
 record TLS2AppReadyState a b c d where
   constructor MkTLS2AppReadyState
   kex_state : TLS2ServerKEXState a b c d
 
+||| The TLS state when communication over TLS 1.2 is ready
 export
 data TLS2ApplicationState : (aead : Type) -> AEAD aead -> Type where
   MkTLS2ApplicationState : (a' : AEAD a) -> Application2Keys (fixed_iv_length {a=a}) (enc_key_length {a=a}) (mac_key_length @{a'}) -> Nat -> Nat ->
@@ -199,6 +228,8 @@ encode_public_keys : (g : SupportedGroup) -> Pair (curve_group_to_scalar_type g)
                      (SupportedGroup, List Bits8)
 encode_public_keys group (sk, pk) = (group, serialize_pk @{snd $ curve_group_to_type group} pk)
 
+||| Given the server supported key exchange group, server's public key as raw byte,
+||| find the matching private key in our local list and perform a key exchange
 key_exchange : (group : SupportedGroup) ->
                List Bits8 ->
                List (DPair SupportedGroup (\g => Pair (curve_group_to_scalar_type g) (curve_group_to_element_type g))) ->
@@ -209,6 +240,7 @@ key_exchange group pk ((group' ** (sk, _)) :: xs) =
     then deserialize_then_dh @{snd $ curve_group_to_type group'} sk pk
     else key_exchange group pk xs
 
+||| Parse a TLS record
 parse_record : List Bits8 ->
                (Parserializer Bits8 (List (Posed Bits8)) (SimpleError String) (Either (AlertLevel, AlertDescription) (TLSVersion, DPair _ Record))) ->
                Either String (DPair _ Record)
@@ -223,6 +255,8 @@ parse_record b_input parser = do
     (_ ** Alert alert) => Left $ show alert
     ok => pure ok
 
+||| Transition from TLS Init state to TLS Client Hello state,
+||| and returning the payload that should be sent to the server
 public export
 tls_init_to_clienthello : TLSState Init -> (List Bits8, TLSState ClientHello)
 tls_init_to_clienthello (TLS_Init state) =
@@ -242,6 +276,9 @@ tls_init_to_clienthello (TLS_Init state) =
         (arecord {i = List (Posed Bits8)}).encode (TLS12, (_ ** Handshake [(_ ** ClientHello client_hello_object)]))
   in (b_client_hello, TLS_ClientHello $ MkTLSClientHelloState (drop 5 b_client_hello) state.client_random state.dh_keys)
 
+
+||| Transition from TLS Client Hello to TLS Server Hello state after receiving Server Hello,
+||| return the new state depending on the server's TLS version
 public export
 tls_clienthello_to_serverhello : TLSState ClientHello -> List Bits8 ->
                                  Either String (Either (TLSState ServerHello2) (TLSState ServerHello3))
@@ -266,6 +303,7 @@ tls_clienthello_to_serverhello (TLS_ClientHello state) b_server_hello = do
          $ MkTLS2ServerHelloState state.client_random server_hello.random server_hello.cipher_suite state.dh_keys hwit digest_state
     tlsvr => Left $ "unsupported version: " <+> show tlsvr
 
+||| Decrypt a handshake wrapper from the server
 decrypt_hs_s_wrapper : TLS3ServerHelloState aead aead' algo algo' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ServerHelloState aead aead' algo algo', List Bits8)
 decrypt_hs_s_wrapper (MkTLS3ServerHelloState cert a' h' digest_state hk counter) (MkWrapper ciphertext mac_tag) record_header =
@@ -276,6 +314,11 @@ decrypt_hs_s_wrapper (MkTLS3ServerHelloState cert a' h' digest_state hk counter)
 list_minus : List a -> List b -> List a
 list_minus a b = take (length a `minus` length b) a
 
+-- I apologize for this mess
+
+||| Handle state transition during handshaking when the server is sending encrypted handshake data
+||| This contains encrypted extensions, server's certificate, verifying the handshake data with the certificate,
+||| and also a verify token computed by hashing all the records that have be sent so far
 tls3_serverhello_to_application_go : Monad m =>
                                      TLSState ServerHello3 ->
                                      List Bits8 ->
@@ -284,18 +327,23 @@ tls3_serverhello_to_application_go : Monad m =>
 tls3_serverhello_to_application_go og [] cert_ok = pure $ Left og
 tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkTLS3ServerHelloState cert a' h' d' hk c')) plaintext cert_ok =
   case feed (map (uncurry MkPosed) $ enumerate Z plaintext) handshake.decode of
+    -- since we do not support any encrypted extensions, it is ignored
     Pure leftover (_ ** EncryptedExtensions x) =>
+      --- pass the plaintext bytes representing the record into the digest
       let consumed = plaintext `list_minus` leftover
           new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
       in tls3_serverhello_to_application_go new (map get leftover) cert_ok
+    -- handle the server's certificate
     Pure leftover (_ ** Certificate x) => 
       case cert of
         HasCertificate _ => throwE "Certificate was sent twice"
         Verified => throwE "Certificate was sent after verification"
         NotVerified => do
+          --- pass the plaintext bytes representing the record into the digest
           let consumed = plaintext `list_minus` leftover
           let new = TLS3_ServerHello $ MkTLS3ServerHelloState (HasCertificate x) a' h' (update consumed d') hk c'
           tls3_serverhello_to_application_go new (map get leftover) cert_ok
+    -- handle the server's signature of a digest of all the handshake records received so far, signed by the server's certificate
     Pure leftover (_ ** CertificateVerify x) => do
       certificate' <- case cert of
         NotVerified => throwE "CertificateVerify sent before Certificate"
@@ -312,6 +360,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
       let consumed = plaintext `list_minus` leftover
       let new = TLS3_ServerHello $ MkTLS3ServerHelloState Verified a' h' (update consumed d') hk c'
       tls3_serverhello_to_application_go new (map get leftover) cert_ok
+    -- handle the Finished record which contains a hash of all the handshake records received so far
     Pure [] (_ ** Finished x) =>
       case cert of
         Verified =>
@@ -339,6 +388,9 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
     Fail err => throwE $ "body: " <+> xxd plaintext <+> "\nbody length: " <+> (show $ length plaintext) <+> "\nparsing error: " <+> show err
     _ => throwE "failed to parse plaintext"
 
+||| Transition from TLS Server Hello to TLS communication ready state after receiving server's handshake data
+||| note that the encrypted records containing the handshake records can be sent seperately as different records,
+||| or a bunch of handshake records can be concatenated into one encrypted record
 public export
 tls3_serverhello_to_application : Monad m => TLSState ServerHello3 -> List Bits8 -> CertificateCheck m ->
                                               m (Either String (Either (TLSState ServerHello3) (List Bits8, TLSState Application3)))
@@ -357,6 +409,7 @@ tls3_serverhello_to_application og@(TLS3_ServerHello server_hello@(MkTLS3ServerH
   | Nothing => throwE "plaintext is empty"
   tls3_serverhello_to_application_go (TLS3_ServerHello server_hello) plaintext cert_ok
 
+||| Decrypt an application data wrapper from the server, and returns a new TLS state
 decrypt_ap_s_wrapper : TLS3ApplicationState aead aead' -> Wrapper (mac_length @{aead'}) -> List Bits8 ->
                        Maybe (TLS3ApplicationState aead aead', List Bits8)
 decrypt_ap_s_wrapper (MkTLS3ApplicationState a' ak c_counter s_counter) (MkWrapper ciphertext mac_tag) record_header =
@@ -364,6 +417,7 @@ decrypt_ap_s_wrapper (MkTLS3ApplicationState a' ak c_counter s_counter) (MkWrapp
      (_, False) => Nothing
      (plaintext, True) => Just (MkTLS3ApplicationState a' ak c_counter (S s_counter), plaintext)
 
+||| Decrypt an application wrapper from the server, and updates the TLS state
 public export
 decrypt_from_record : TLSState Application3 -> List Bits8 -> Either String (TLSState Application3, List Bits8)
 decrypt_from_record og@(TLS3_Application app_state@(MkTLS3ApplicationState a' ak c_counter s_counter)) b_wrapper = do
@@ -380,6 +434,8 @@ decrypt_from_record og@(TLS3_Application app_state@(MkTLS3ApplicationState a' ak
   | Nothing => Left "plaintext is empty"
   Right (TLS3_Application app_state, plaintext)
 
+
+||| Encrypt an application data wrapper to the server, and updates the TLS state
 public export
 encrypt_to_record : TLSState Application3 -> List Bits8 -> (TLSState Application3, List Bits8)
 encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_counter) plaintext =
@@ -392,6 +448,7 @@ encrypt_to_record (TLS3_Application $ MkTLS3ApplicationState a' ak c_counter s_c
         arecord.encode {i = List (Posed Bits8)} (TLS12, MkDPair _ (ApplicationData $ to_application_data $ MkWrapper app_encrypted app_mac_tag))
   in (TLS3_Application $ MkTLS3ApplicationState a' ak (S c_counter) s_counter, b_app_wrapped)
 
+||| Transition from TLS Server Hello to TLS Certificate state after receiving server's certificate
 public export
 serverhello2_to_servercert : TLSState ServerHello2 -> List Bits8 -> Either String (TLSState ServerCert2)
 serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
@@ -406,6 +463,9 @@ serverhello2_to_servercert (TLS2_ServerHello server_hello) b_cert = do
            server_hello.digest_wit
            (update @{hash_to_digest server_hello.digest_wit} (drop 5 b_cert) server_hello.digest_state)
 
+||| Transition from TLS Server Hello to TLS Certificate state after receiving server's public key for key exchange
+||| This also contains a signature of the public key signed by the server's certificate
+||| The handshake verification step will be done here
 public export
 servercert_to_serverkex : Monad m => TLSState ServerCert2 -> List Bits8 -> CertificateCheck m -> m (Either String (TLSState ServerKEX2))
 servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex cert_ok = runEitherT $ do
@@ -442,6 +502,7 @@ servercert_to_serverkex (TLS2_ServerCertificate server_cert) b_kex cert_ok = run
            chosen_pk
            app_key
 
+||| Encrypt a wrapper to the server
 encrypt_to_wrapper2 : AEAD a => Vect (enc_key_length {a=a}) Bits8 -> Vect (fixed_iv_length {a=a}) Bits8 -> Vect (mac_key_length {a=a}) Bits8 ->
                       List Bits8 -> RecordType -> Nat -> List Bits8
 encrypt_to_wrapper2 key iv mac_key plaintext record_id sequence =
@@ -454,6 +515,9 @@ encrypt_to_wrapper2 key iv mac_key plaintext record_id sequence =
       b_wrapper = (wrapper2 {i = List (Posed Bits8)}).encode (record_id, TLS12, wrapper)
   in b_wrapper
 
+
+||| Transition from TLS Key Exchange to TLS Hello Done state after receiving server hello done
+||| Also returns a payload to be sent to the server
 public export
 serverkex_process_serverhellodone : TLSState ServerKEX2 -> List Bits8 -> Either String (TLSState ServerKEXDone2, List Bits8)
 serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key)) b_hello_done = do
@@ -477,6 +541,7 @@ serverkex_process_serverhellodone og@(TLS2_ServerKEX (MkTLS2ServerKEXState a' h'
   Right (TLS2_ServerKEXDone $ MkTLS2ServerKEXDoneState $ MkTLS2ServerKEXState a' h' digest_state vdlen chosen_pk app_key
         , b_client_kex <+> b_client_change_cipher_spec <+> b_client_verify_data)
 
+||| Transition from TLS Hello Done to TLS server application ready state after receiving change cipher spec
 public export
 serverhellodone_to_applicationready2 : TLSState ServerKEXDone2 -> List Bits8 -> Either String (TLSState AppReady2)
 serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changecipherspec = do
@@ -484,6 +549,7 @@ serverhellodone_to_applicationready2 (TLS2_ServerKEXDone state) b_changeciphersp
   | _ => Left $ "Parsing error: record not ChangeCipherSpec"
   pure $ TLS2_AppReady $ MkTLS2AppReadyState state.kex_state
 
+||| Parse a TLS 1.2 encrypted wrapper
 parse_tls12_wrapper : AEAD a => RecordType -> List Bits8 -> Either String (Wrapper2 (record_iv_length {a=a}) (mac_length {a=a}))
 parse_tls12_wrapper recordtype b_input = do
   let (Pure [] (recordtype', TLS12, record')) = feed (map (uncurry MkPosed) $ enumerate Z b_input) (wrapper2 {i = List (Posed Bits8)}).decode
@@ -495,6 +561,7 @@ parse_tls12_wrapper recordtype b_input = do
      then pure record'
      else Left $ "expected record type: " <+> show recordtype <+> ", but got: " <+> show recordtype'
 
+||| Decrypt a TLS 1.2 encrypted wrapper from the server
 decrypt_from_wrapper2 : AEAD a =>
                         Nat ->
                         RecordType ->
@@ -511,6 +578,8 @@ decrypt_from_wrapper2 sequence record_type wrapper iv key mac_key =
       (plaintext, ok) = decrypt key iv wrapper.iv_data mac_key sequence wrapper.encrypted_data aadf (toList wrapper.auth_tag)
   in if ok then Right $ plaintext else Left "cannot decrypt wrapper"
 
+
+||| Transition from TLS server application ready state to TLS communication ready state after receiving handshake finished from server
 public export
 applicationready2_to_application2 : TLSState AppReady2 -> List Bits8 -> Either String (TLSState Application2)
 applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
@@ -525,12 +594,14 @@ applicationready2_to_application2 (TLS2_AppReady state) b_verifydata = do
   maybe_to_either (guard $ toList verify_data `s_eq'` toList verify_data') "Verify data not match"
   pure $ TLS2_Application $ MkTLS2ApplicationState a' app_key 1 1
 
+||| Encrypt data into TLS payload to be sent to the server
 public export
 encrypt_to_record2 : TLSState Application2 -> List Bits8 -> (TLSState Application2, List Bits8)
 encrypt_to_record2 (TLS2_Application $ MkTLS2ApplicationState a' ak c_counter s_counter) plaintext =
    let b_wrapper = encrypt_to_wrapper2 ak.client_application_key ak.client_application_iv ak.client_mac_key plaintext ApplicationData c_counter
    in (TLS2_Application $ MkTLS2ApplicationState a' ak (S c_counter) s_counter, b_wrapper)
 
+||| Decrypt TLS payload into data from the server
 public export
 decrypt_from_record2 : TLSState Application2 -> List Bits8 -> Either String (TLSState Application2, List Bits8)
 decrypt_from_record2 (TLS2_Application $ MkTLS2ApplicationState a' ak c_counter s_counter) ciphertext = do

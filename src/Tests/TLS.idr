@@ -1,3 +1,6 @@
+-- Old TLS test before linear handle was implemented
+-- Kept as a reference
+
 module Tests.TLS
 
 import Crypto.Curve
