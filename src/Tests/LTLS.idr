@@ -30,7 +30,7 @@ test_http_body hostname =
   , "Connection: close"
   , "User-Agent: curl"
   , "Accept: */*"
-  , ""
+  , "Content-Length: 0"
   , ""
   , ""
   ]
