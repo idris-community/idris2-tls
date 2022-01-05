@@ -10,6 +10,7 @@ import Utils.Network.C
 
 -- Needed for some reason, sometimes the socket does not read enough bytes
 recv_n_bytes : HasIO m => Socket -> Nat -> List Bits8 -> m (Either ErrorCode (List Bits8))
+recv_n_bytes sock Z buf = pure (Right [])
 recv_n_bytes sock size buf = do
   Right response <- recv_bytes sock $ cast $ minus size $ length buf
   | error => pure error

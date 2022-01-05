@@ -50,7 +50,7 @@ read_record : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ Res Bool $ \
 read_record handle = do
   -- read header
   (True # (b_header # handle)) <- read handle 5
-  | (False # (error # handle)) => pure1 (False # ("read (record header / alert) failed" <+> error # handle))
+  | (False # (error # handle)) => pure1 (False # ("read (record header / alert) failed: " <+> error # handle))
   let (Pure [] (Right (_, TLS12, len))) =
     feed {i = List (Posed Bits8)} (map (uncurry MkPosed) $ enumerate 0 b_header) (alert <|> record_type_with_version_with_length).decode
   | Pure [] (Left x) => (close handle) >>= (\s => pure1 (False # (("ALERT: " <+> show x) # s)))

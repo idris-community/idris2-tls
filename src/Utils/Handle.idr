@@ -44,20 +44,3 @@ write (MkHandle x do_read do_write do_close) input = do
   (True # x) <- do_write x input
   | (False # x) => pure1 $ False # x
   pure1 $ True # MkHandle x do_read do_write do_close
-
-{-
-socket_to_handle : (1 _ : Socket Open) -> Handle (Socket Open) (Socket Closed) (Res SocketError $ \_ => Socket Closed) (Res Nat $ \_ => Socket Closed)
-socket_to_handle sock = MkHandle
-  sock
-  ( \sock, len => do
-      (Right (result, _) # sock) <- recv sock len
-      | (Left err # sock) => pure1 $ False # (err # sock)
-      pure1 $ True # ([{- result, fuck Network.recv -}] # sock)
-  )
-  ( \sock, input => do
-      (Nothing # sock) <- send sock (?fuck_Network_send input)
-      | (Just err # sock) => pure1 $ False # (err # sock)
-      pure1 $ True # sock
-  )
-  close
--}
