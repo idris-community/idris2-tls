@@ -44,3 +44,7 @@ write (MkHandle x do_read do_write do_close) input = do
   (True # x) <- do_write x input
   | (False # x) => pure1 $ False # x
   pure1 $ True # MkHandle x do_read do_write do_close
+
+public export
+Handle' : Type -> Type -> Type
+Handle' t_ok t_closed = Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
