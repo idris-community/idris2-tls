@@ -21,7 +21,7 @@ recv_n_bytes sock size buf = do
 
 ||| Turning a non-linear socket from Network.Socket into a Handle tailored for Network.TLS.Handle
 export
-socket_to_handle : Socket -> Handle Socket () (Res String (const ())) (Res String (const ()))
+socket_to_handle : Socket -> Handle' Socket ()
 socket_to_handle sock = MkHandle
   sock
   (\(MkSocket _ _ _ _), wanted => do

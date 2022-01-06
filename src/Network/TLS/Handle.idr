@@ -42,10 +42,6 @@ Uninhabited (TLSHandle TLS11 t_ok t_closed) where
 OkOrError : TLSVersion -> Type -> Type -> Type
 OkOrError tls_version t_ok t_closed = Res Bool $ \ok => if ok then TLSHandle tls_version t_ok t_closed else Res String (const t_closed)
 
-public export
-Handle' : Type -> Type -> Type
-Handle' t_ok t_closed = Handle t_ok t_closed (Res String $ const t_closed) (Res String $ const t_closed)
-
 read_record : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ Res Bool $ \ok => if ok then Res (List Bits8) (const $ Handle' t_ok t_closed) else Res String (const t_closed)
 read_record handle = do
   -- read header
