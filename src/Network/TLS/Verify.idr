@@ -218,3 +218,14 @@ certificate_check trusted hostname cert = runEitherT $ do
   check_leaf_certificate cert
   verify_certificate_chain Z trusted ok cert
   pure cert.cert_public_key
+
+||| A CertificateCheck function that always trusts the certificate unless it's malformed
+export
+certificate_ignore_check : String -> CertificateCheck IO
+certificate_ignore_check hostname cert = runEitherT $ do
+  let certificates = body <$> cert.certificates
+  ok <- liftE $ the _ $ traverse parse_certificate certificates
+  let identifer = to_identifier hostname
+  let Just cert = find_certificate identifer ok
+  | Nothing => throwE "cannot find certificate"
+  pure cert.cert_public_key

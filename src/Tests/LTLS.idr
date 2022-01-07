@@ -117,8 +117,9 @@ tls_test trusted_cert_store target_hostname port = do
         handle
         -- the function which will be used to verify the server's certificate
         -- more documentation can be found in Network.TLS.Verify
-        -- if you want to skin certificate verification, you can implement your
-        -- own CertificateCheck function
+        -- if you want to skip certificate verification, you can use certificate_ignore_check
+        -- or implement your own CertificateCheck function
+        -- (certificate_ignore_check target_hostname)
         (certificate_check certs target_hostname)
     | (False # (error # ())) => putStrLn error
 
