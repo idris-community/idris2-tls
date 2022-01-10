@@ -12,32 +12,33 @@ import Data.Nat.Factor
 import Data.Nat.Order.Properties
 import Utils.Misc
 
+weakenN' : {m : Nat} -> (0 n : Nat) -> Fin m -> Fin (n + m)
+weakenN' n m' = rewrite plusCommutative n m in weakenN n m'
+
+fix_fin : (m : Nat) -> (n : Nat) -> (S m) = n -> S (S (S (S (S (S (S (S (mult m 8)))))))) = mult n 8
+fix_fin m n prf = rewrite sym prf in Refl
+
 export
-to_be : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 prf : (bitSize {a}) = n * 8} -> a -> Vect n Bits8
-to_be x = replace_vect (finToNatLastIsBound) (okay last)
+to_le : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 no0 : NonZero n} -> {auto 0 prf : n * 8 = (bitSize {a})} -> a -> Vect n Bits8
+to_le x = let (S m) = n; nmeq = Refl in map (go nmeq x) Fin.range
   where
-  okay : (p : Fin (S n)) -> Vect (finToNat p) Bits8
-  okay FZ = []
-  okay (FS wit) = replace_vect (cong S finToNatWeakenNeutral) $
-    ( cast {to = Bits8} (shiftR x (bitsToIndex $ subset_to_fin $ Element {pred = (`LT` (bitSize {a}))} (finToNat wit * 8) (replace {p = LT (finToNat wit * 8)} (sym prf) $ lte_plus_left 7 $ multLteMonotoneLeft (S (finToNat wit)) n 8 $ elemSmallerThanBound wit)))
-    :: okay (weaken wit)
-    )
+    go : {m : Nat} -> ((S m) = n) -> a -> Fin (S m) -> Bits8
+    go nmeq b i = cast $ shiftR b (bitsToIndex $ coerce prf $ coerce (fix_fin m n nmeq) $ weakenN' 7 $ i * 8)
 
 export
-to_le : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 prf : (bitSize {a}) = n * 8} -> a -> Vect n Bits8
-to_le = reverse . to_be
+to_be : (FiniteBits a, Cast a Bits8) => {n : _} -> {auto 0 no0 : NonZero n} -> {auto 0 prf : n * 8 = (bitSize {a})} -> a -> Vect n Bits8
+to_be = reverse . to_le
 
 export
-from_be : (FiniteBits a, Cast Bits8 a) => {n : _} -> {auto 0 prf : (bitSize {a} = n * 8)} -> Vect n Bits8 -> a
-from_be p = okay last (replace_vect (sym finToNatLastIsBound) p)
+from_le : (FiniteBits a, Cast Bits8 a) => {n : _} -> {auto 0 no0 : NonZero n} -> {auto 0 prf : n * 8 = (bitSize {a})} -> Vect n Bits8 -> a
+from_le p = let (S m) = n; nmeq = Refl in foldl (.|.) zeroBits $ zipWith (go nmeq) p Fin.range
   where
-  okay : (x : Fin (S n)) -> Vect (finToNat x) Bits8 -> a
-  okay FZ [] = zeroBits
-  okay (FS wit) (z :: zs) = ( shiftL (cast {to = a} z) (bitsToIndex $ subset_to_fin $ Element (finToNat wit * 8) (replace {p = LT (finToNat wit * 8)} (sym prf) $ lte_plus_left 7 $ multLteMonotoneLeft (S (finToNat wit)) n 8 $ elemSmallerThanBound wit)) ) .|. okay (weaken wit) (replace_vect (sym finToNatWeakenNeutral) zs)
+    go : {m : Nat} -> ((S m) = n) -> Bits8 -> Fin (S m) -> a
+    go nmeq b i = shiftL (cast b) (bitsToIndex $ coerce prf $ coerce (fix_fin m n nmeq) $ weakenN' 7 $ i * 8)
 
 export
-from_le : (FiniteBits a, Cast Bits8 a) => {n : _} -> {auto 0 prf : (bitSize {a} = n * 8)} -> Vect n Bits8 -> a
-from_le = from_be . reverse
+from_be : (FiniteBits a, Cast Bits8 a) => {n : _} -> {auto 0 no0 : NonZero n} -> {auto 0 prf :  n * 8 = (bitSize {a})} -> Vect n Bits8 -> a
+from_be = from_le . reverse
 
 export
 set_bit_to : Bits a => Bool -> Index {a} -> a -> a
