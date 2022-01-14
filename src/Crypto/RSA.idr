@@ -5,7 +5,6 @@ import Data.Vect
 import Data.Bits
 import Utils.Misc
 import Utils.Bytes
-import Crypto.Prime
 import Crypto.Random
 import Data.Nat
 import Crypto.Hash
@@ -19,83 +18,15 @@ export
 data RSAPublicKey : Type where
   MkRSAPublicKey : (n : Integer) -> (e : Integer) -> RSAPublicKey
 
-export
-data RSASecretKey : Type where
-  MkRSASecretKey : (n : Integer) -> (e : Integer) -> (d : Integer) -> RSASecretKey
-
 -- TODO: check if there are more constraints needed between n and e
 -- also maybe use a proof instead of masking the constructor in the future
 export
 mk_rsa_publickey : Integer -> Integer -> Maybe RSAPublicKey
 mk_rsa_publickey n e = guard (1 == gcd' n e) $> MkRSAPublicKey n e
 
--- p q must be primes or the skinwalker will devour your offsprings
--- p = genprime(k/2) until p mod e /= 1
--- q = genprime(k-k/2) until q mod e /= 1
--- e and (p-1)(q-1) should be coprimes
-generate_key_pair_with_e : Integer -> Integer -> Integer -> (RSAPublicKey, RSASecretKey)
-generate_key_pair_with_e p q e =
-  let n = p * q
-      d = inv_mul_mod e ((p-1)*(q-1))
-  in (MkRSAPublicKey n e, MkRSASecretKey n e d)
-
--- p q must be primes or the skinwalker will devour your offsprings
-generate_key_pair' : Integer -> Integer -> (RSAPublicKey, RSASecretKey)
-generate_key_pair' p q = generate_key_pair_with_e p q 65537
-
-generate_prime_part : MonadRandom m => Integer -> Nat -> m Integer
-generate_prime_part e bits = do
-  p <- generate_prime bits
-  if (p `mod` e) == 1 then generate_prime_part e bits else pure p
-
-export
-generate_key_pair : MonadRandom m => Nat -> m (RSAPublicKey, RSASecretKey)
-generate_key_pair k = do
-  let e = 65537
-  p <- generate_prime_part e (k `div` 2)
-  q <- generate_prime_part e (minus k (k `div` 2))
-  pure $ generate_key_pair_with_e p q e
-
 export
 rsa_encrypt : RSAPublicKey -> Integer -> Integer
 rsa_encrypt (MkRSAPublicKey n e) m = pow_mod m e n
-
--- r and n should be coprimes or you die
-mask_on : RSASecretKey -> Integer -> Integer -> Integer
-mask_on (MkRSASecretKey n e d) r x = pow_mod (x * r) e n
-
-mask_off : RSASecretKey -> Integer -> Integer -> Integer
-mask_off (MkRSASecretKey n e d) r z = pow_mod (mul_mod (inv_mul_mod r n) z n) d n
-
-rsa_decrypt' : RSASecretKey -> Integer -> Integer
-rsa_decrypt' (MkRSASecretKey n e d) c = pow_mod c d n
-
-generate_blinder : MonadRandom m => Integer -> m Integer
-generate_blinder n = do
-  r <- uniform_random' 2 (n - 1)
-  if are_coprimes r n then pure r else generate_blinder n
-
--- Timing attack resistant
-rsa_decrypt_blinded' : RSASecretKey -> Integer -> Integer -> Integer
-rsa_decrypt_blinded' k@(MkRSASecretKey n e d) r c = mask_off k r $ rsa_decrypt' k $ mask_on k r c
-
-export
-rsa_decrypt_blinded : MonadRandom m => RSASecretKey -> Integer -> m Integer
-rsa_decrypt_blinded k@(MkRSASecretKey n e d) c = do
-  r <- generate_blinder n
-  pure $ rsa_decrypt_blinded' k r c
-
-export
-rsa_unsafe_decrypt : RSASecretKey -> Integer -> Integer
-rsa_unsafe_decrypt = rsa_decrypt'
-
-export
-rsa_sign : RSASecretKey -> Integer -> Integer
-rsa_sign (MkRSASecretKey n e d) m = pow_mod m d n
-
-export
-rsa_sign_extract_hash : RSAPublicKey -> Integer -> Integer
-rsa_sign_extract_hash (MkRSAPublicKey n e) s = pow_mod s e n
 
 -- RFC 8017
 

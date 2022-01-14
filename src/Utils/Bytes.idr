@@ -48,7 +48,7 @@ set_bit_to True pos x = setBit x pos
 export
 to_bools_be' : FiniteBits a => (n : Fin (S (bitSize {a}))) -> a -> Vect (finToNat n) Bool
 to_bools_be' FZ x = []
-to_bools_be' (FS wit) x = testBit x (bitsToIndex $ subset_to_fin $ Element (finToNat wit) (elemSmallerThanBound wit)) :: (replace_vect finToNatWeakenNeutral $ to_bools_be' (weaken wit) x)
+to_bools_be' (FS wit) x = testBit x (bitsToIndex wit) :: (replace_vect finToNatWeakenNeutral $ to_bools_be' (weaken wit) x)
 
 export
 to_bools_be : FiniteBits a => a -> Vect (bitSize {a}) Bool
@@ -137,23 +137,12 @@ shiftR' x i = maybe_a_a zeroBits $ do
   i' <- natToFin i _
   Just $ shiftR x (bitsToIndex i')
 
-fix_fin_type : (m = (S n)) -> Fin (S n) -> Fin m
-fix_fin_type prf x = rewrite prf in x
-
 export
-rotl : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
+rotl : FiniteBits a => {n : Nat} -> {auto prf : ((S n) = bitSize {a})} -> Fin (S n) -> a -> a
 rotl FZ x = x
-rotl (FS i) x = (shiftL x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftR x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)
+rotl (FS i) x = (shiftL x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftR x $ bitsToIndex $ invFin $ coerce prf $ weaken i)
 
 export
-rotr : FiniteBits a => {n : Nat} -> {auto prf : (bitSize {a} = (S n))} -> Fin (S n) -> a -> a
+rotr : FiniteBits a => {n : Nat} -> {auto prf : ((S n) = bitSize {a})} -> Fin (S n) -> a -> a
 rotr FZ x = x
-rotr (FS i) x = (shiftR x $ bitsToIndex (fix_fin_type prf $ FS i)) .|. (shiftL x $ bitsToIndex $ invFin $ fix_fin_type prf $ weaken i)
-
-export
-b8_to_fin : Bits8 -> Fin 256
-b8_to_fin x =
-  case natToFin (cast x) _ of
-    Just y => y
-    Nothing => assert_total $ idris_crash "b8_to_fin is not working"
-
+rotr (FS i) x = (shiftR x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftL x $ bitsToIndex $ invFin $ coerce prf $ weaken i)

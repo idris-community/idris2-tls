@@ -26,7 +26,6 @@ modules = Crypto.RSA,
           Crypto.Curve.XCurves,
           Crypto.ECDH,
           Crypto.Random,
-          Crypto.Prime,
           Crypto.Hash,
           Crypto.Hash.Interfaces,
           Crypto.Hash.SHA2,
@@ -71,7 +70,8 @@ modules = Crypto.RSA,
           Utils.Network.C,
           Utils.Handle.C,
           Utils.Time,
-          Utils.IPAddr
+          Utils.IPAddr,
+          Utils.ConstantTable
 
 opts = "-Wno-shadowing"
 sourcedir = "src"

@@ -1,5 +1,6 @@
 module Crypto.AES.Big
 
+import Utils.ConstantTable
 import Crypto.AES.Common
 import Data.Bits
 import Utils.Bytes
@@ -9,8 +10,8 @@ import Data.Fin.Extra
 import Data.Vect
 import Utils.Misc
 
-ssm0 : Vect 256 Bits32
-ssm0 =
+ssm0 : ConstantTable 256 Bits32
+ssm0 = from_vect
   [ 0xC66363A5, 0xF87C7C84, 0xEE777799, 0xF67B7B8D, 0xFFF2F20D, 0xD66B6BBD
   , 0xDE6F6FB1, 0x91C5C554, 0x60303050, 0x02010103, 0xCE6767A9, 0x562B2B7D
   , 0xE7FEFE19, 0xB5D7D762, 0x4DABABE6, 0xEC76769A, 0x8FCACA45, 0x1F82829D
@@ -56,16 +57,14 @@ ssm0 =
   , 0x7BB0B0CB, 0xA85454FC, 0x6DBBBBD6, 0x2C16163A ]
 
 lookup_ssm0 : Bits32 -> Bits32
-lookup_ssm0 x =
-  let i = b8_to_fin $ cast x
-  in index i ssm0
+lookup_ssm0 x = index_bits8 (cast x) ssm0
 
 lookup_sbox : Bits32 -> Bits32 -> Bits32 -> Bits32 -> Bits32
 lookup_sbox s0 s1 s2 s3 =
-  let a = cast $ index (b8_to_fin $ cast $ shiftR s0 24) sbox
-      b = cast $ index (b8_to_fin $ cast $ shiftR s1 16) sbox
-      c = cast $ index (b8_to_fin $ cast $ shiftR s2 8) sbox
-      d = cast $ index (b8_to_fin $ cast s3) sbox
+  let a = cast $ index_bits8 (cast $ shiftR s0 24) sbox
+      b = cast $ index_bits8 (cast $ shiftR s1 16) sbox
+      c = cast $ index_bits8 (cast $ shiftR s2 8) sbox
+      d = cast $ index_bits8 (cast s3) sbox
   in (shiftL a 24) .|. (shiftL b 16) .|. (shiftL c 8) .|. d
 
 sbox_ext : Fin 32 -> Bits32 -> Bits32
