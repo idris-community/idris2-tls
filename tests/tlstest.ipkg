@@ -1,0 +1,29 @@
+package tlstest
+
+version = 0.0.1
+
+authors = "octeep"
+
+readme = "README.md"
+
+homepage   = "https://github.com/octeep/idris2-tls"
+sourceloc  = "https://github.com/octeep/idris2-tls.git"
+bugtracker = "https://github.com/octeep/idris2-tls/issues"
+
+license = "ISC (refer to LICENSE file)"
+brief = "A portable idris2 implementation of TLS"
+
+depends = base      >= 0.5.1
+        , contrib   >= 0.5.1
+        , network   >= 0.5.1
+        , sop       >= 0.5.0
+        , elab-util >= 0.5.0
+        , tls       >= 0.0.1
+
+-- modules =
+
+main = Test
+executable = runtests
+
+opts = "-Wno-shadowing"
+sourcedir = "src"

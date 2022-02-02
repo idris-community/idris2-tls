@@ -31,12 +31,17 @@ jobs:
         with:
           path: |
             ~/.idris2
-          key: ${{ runner.os }}-${{ env.IDRIS2_COMMIT }}
+          key: ${{ runner.os }}-${{ env.IDRIS2_COMMIT }}-scheme954
 
       - name: Install Chez
         run: |
+          echo "deb http://security.ubuntu.com/ubuntu hirsute universe" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
-          sudo apt-get install -y chezscheme
+          sudo apt-get install -y -t hirsute chezscheme
+
+      - name: Test Scheme
+        run: |
+          scheme --version
 
       - name: Install Idris2
         if: steps.cache-idris2.outputs.cache-hit != 'true'
@@ -63,6 +68,9 @@ jobs:
 
       - name: Build package
         run: make install
+
+      - name: Test package
+        run: make test
 
   windows-chez:
     runs-on: windows-latest
@@ -135,8 +143,12 @@ jobs:
       - name: Build package
         run: |
           cd tls
+          echo "TLS=$(c:\msys64\usr\bin\cygpath -u $(pwd))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           make install
-          
+
+      - name: Test package
+        run: c:\msys64\usr\bin\bash -l -c "cd $env:TLS && make test"
+
   macos-chez:
     runs-on: macos-latest
     env:
@@ -151,13 +163,13 @@ jobs:
           path: |
             ~/.idris2
           key: ${{ runner.os }}-${{ env.IDRIS2_COMMIT }}
-        
+
       - name: Install Idris2 build dependencies
         run: |
           brew install chezscheme
           brew install coreutils
           echo "$HOME/.idris2/bin" >> "$GITHUB_PATH"
-        
+
       - name: Build Idris 2 from bootstrap
         if: steps.cache-idris2.outputs.cache-hit != 'true'
         run: |
@@ -191,3 +203,8 @@ jobs:
         run: |
           cd tls
           make install
+
+      - name: Test package
+        run: |
+          cd tls
+          make test

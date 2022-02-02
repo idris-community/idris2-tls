@@ -1,3 +1,5 @@
 build/
 *.sw?
 *.so
+*.d
+*.o

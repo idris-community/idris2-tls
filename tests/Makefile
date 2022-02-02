@@ -1,6 +1,6 @@
 export IDRIS2 ?= idris2
 
-lib_pkg = tls.ipkg
+lib_pkg = tlstest.ipkg
 
 .PHONY: all
 all: lib
@@ -14,13 +14,10 @@ clean-install-with-src: clean install-with-src
 .PHONY: lib
 lib:
 	${IDRIS2} --build ${lib_pkg}
-	${MAKE} -C c
 
 .PHONY: install
 install:
 	${IDRIS2} --install ${lib_pkg}
-	${MAKE} -C c
-	${MAKE} -C c install
 
 .PHONY: install-with-src
 install-with-src:
@@ -33,4 +30,5 @@ clean:
 
 .PHONY: test
 test:
-	${MAKE} -C tests/ test IDRIS2?=${IDRIS2}
+	${IDRIS2} --build ${lib_pkg}
+	./build/exec/runtests
