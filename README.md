@@ -62,10 +62,12 @@ Currently bindings for random entropy are implemented for C, Scheme and JS backe
 would be appreciated. A current outline of what bindings are used is as follow:
 
 C / Scheme:
-- Windows: `SystemPrng` (not tested)
-- MacOS: `arc4random_buf` (not tested)
-- Linux: `getrandom` (tested on `GNU/Linux 5.15.10-gentoo` by tensorknower69)
-- Other systems: `arc4random_buf` (tested on OpenBSD by octeep, not tested on other systems)
+
+A C library is used to provide a unified interface for generating random numbers in [here](c/random.c).
+
+- Windows: `BCryptGenRandom`
+- MacOS / BSD: `arc4random_buf`
+- Linux: `getrandom`
 
 On Unix-like systems, `/dev/urandom` and `/dev/random` are decidedly not used because I've encountered blocking problems with them, so I figured that directly
 using syscalls would be cleaner.
@@ -73,8 +75,6 @@ using syscalls would be cleaner.
 Node / Javascript:
 - Node: `require('crypto').randomBytes` (tested)
 - Other environments: `crypto.getRandomValues` (not tested)
-
-If you have tested the `MonadRandom IO` implementation on any platforms which we have not tested, feel free to open a PR and change this `README.md`.
 
 If you need to write your own implementation of `MonadRandom IO` for whatever reasons, an example of how they are implemented can be found [here](src/Crypto/Random).
 
@@ -93,6 +93,7 @@ e.g. [timing attack](https://en.wikipedia.org/wiki/Timing_attack). The code has 
 have zero background in cryptography nor cybersecurity. Do not use this under the assumption that it is secure. Use at your own risk.
 
 # TODO
+- Revocation checking
 - OCSP stapling
 
 # License
