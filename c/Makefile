@@ -3,7 +3,7 @@ include config.mk
 IDRIS := idris2
 INSTALLDIR = `${IDRIS} --libdir`/tls-0.0.1/lib
 
-TARGET = libidrisrandom
+TARGET = libidristls
 
 ifeq ($(OS), windows)
 	LDFLAGS += -lbcrypt
@@ -18,12 +18,7 @@ all: $(TARGET)$(SHLIB_SUFFIX)
 $(TARGET)$(SHLIB_SUFFIX): $(OBJS)
 	$(CC) -shared -o $@ $^ $(LDFLAGS)
 
-
 -include $(DEPS)
-
-%.d: %.c
-	@$(CPP) $(CFLAGS) $< -MM -MT $(@:.d=.o) >$@
-
 
 .PHONY: clean
 clean :
@@ -31,7 +26,6 @@ clean :
 
 cleandep: clean
 	rm -f $(DEPS)
-
 
 .PHONY: install
 install:
