@@ -8,7 +8,9 @@
 #include <sys/random.h>
 #elif __WINDOWS__
 #include <windows.h>
+#include <wincrypt.h>
 #include <bcrypt.h>
+#include <stdint.h>
 #endif
 
 int random_buf(void *buf, size_t nbytes) {
@@ -23,3 +25,29 @@ int random_buf(void *buf, size_t nbytes) {
     return 0;
 #endif
 }
+
+#ifdef __WINDOWS__
+void* openCertStore() {
+    return CertOpenSystemStoreA(0, "ROOT");
+}
+
+int closeCertStore(void* hCertStore) {
+    return CertCloseStore(hCertStore, 0);
+}
+
+const void* nextCertInStore(void* hCertStore, void* prevCert) {
+    return CertEnumCertificatesInStore(hCertStore, prevCert);
+}
+
+int32_t certLenInfo(PCCERT_CONTEXT cert) {
+    if (cert->dwCertEncodingType != 1) {
+        return -1;
+    }
+
+    return cert->cbCertEncoded;
+}
+
+void certBody(PCCERT_CONTEXT cert, void* buf) {
+    memcpy(buf, cert->pbCertEncoded, cert->cbCertEncoded);
+}
+#endif
