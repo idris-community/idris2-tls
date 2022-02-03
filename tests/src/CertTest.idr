@@ -7,11 +7,15 @@ import Control.Monad.Error.Interface
 import System.Info
 import System.FFI
 import Data.Buffer
+import Data.List
 import Network.TLS.Certificate
 import Network.TLS.Parse.PEM
 import Data.String.Parser
+import Data.Either
 import System.File.Process
 import System.File.ReadWrite
+import System.Directory
+import System
 
 print_certificate : HasIO io => Either String Certificate -> io ()
 print_certificate (Right cert) = printLn cert
@@ -102,9 +106,41 @@ test_macos_cert = do
 
 --- END MACOS ---
 
+--- START UNIX ---
+
+default_paths : List String
+default_paths =
+  [ "/etc/ssl/certs/"                 -- linux
+  , "/system/etc/security/cacerts/"   -- android
+  , "/usr/local/share/certs/"         -- freebsd
+  , "/etc/ssl/cert.pem"               -- openbsd
+  ]
+
+to_files : HasIO io => List String -> io (List String)
+to_files folders = join <$> traverse go folders where
+  go : String -> io (List String)
+  go folder = case !(listDir folder) of
+    Left _ => pure [folder]
+    Right files => pure (map (folder <+> "/" <+>) files)
+
+test_unix_certs : EitherT String IO ()
+test_unix_certs = do
+  folder <- maybe default_paths (::[]) <$> getEnv "SYSTEM_CERTIFICATE_PATH"
+  certpaths <- to_files folder
+  pemtxts <- mapMaybe getRight <$> traverse readFile certpaths
+  let pems = pemtxts >>= parse_pems_ignore_error
+  let certs = map pem_to_certificate pems
+  putStrLn "\{show (length certs)} certificates found"
+  traverse_ {t=List} print_certificate certs
+  where
+    parse_pems_ignore_error : String -> List PEMBlob
+    parse_pems_ignore_error = either (const []) fst . parse (many parse_pem_blob)
+
+--- END UNIX
+
 export
 test_cert : EitherT String IO ()
 test_cert =
   if isWindows
      then test_windows_cert
-     else (if os == "darwin" then test_macos_cert else putStrLn "not on windows, skipped")
+     else (if os == "darwin" then test_macos_cert else test_unix_certs)
