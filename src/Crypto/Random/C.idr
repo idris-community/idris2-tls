@@ -9,7 +9,7 @@ import Data.Buffer
 import Data.List
 import System.Info
 
-%foreign "C:random_buf,libidrisrandom"
+%foreign "C:random_buf,libidristls"
 prim_io__random_buf : AnyPtr -> Int -> PrimIO Int
 
 public export
