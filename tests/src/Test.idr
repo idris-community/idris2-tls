@@ -4,6 +4,7 @@ import Data.List
 import System
 
 import RandomTest
+import CertTest
 import Control.Monad.Error.Either
 
 %default partial
@@ -23,4 +24,4 @@ run tests = do
 
 export
 main : IO ()
-main = run [ (run_test "csprng" test_random) ]
+main = run [ (run_test "csprng" test_random), (run_test "certstore" test_cert) ]
