@@ -3,10 +3,26 @@ module CertTest
 import Data.Vect
 import Data.Fin
 import Control.Monad.Error.Either
+import Control.Monad.Error.Interface
 import System.Info
 import System.FFI
 import Data.Buffer
 import Network.TLS.Certificate
+import Network.TLS.Parse.PEM
+import Data.String.Parser
+import System.File.Process
+import System.File.ReadWrite
+
+print_certificate : HasIO io => Either String Certificate -> io ()
+print_certificate (Right cert) = printLn cert
+print_certificate (Left err) = putStrLn "cannot parse: \{err}"
+
+pem_to_certificate : PEMBlob -> Either String Certificate
+pem_to_certificate (MkPEMBlob "CERTIFICATE" content) =
+  bimap (\err => "error: \{err}, content:\n") id (parse_certificate content)
+pem_to_certificate _ = Left "PEM is not a certificate"
+
+--- START WINDOWS ---
 
 %foreign "C:openCertStore,libidristls"
 prim__open_cert_store : PrimIO AnyPtr
@@ -35,10 +51,6 @@ nullPtr p = do
 buffer_to_list : HasIO io => Buffer -> io (List Bits8)
 buffer_to_list buffer = rawSize buffer >>= \cap => traverse (getBits8 buffer) [0..(cap-1)]
 
-print_certificate : HasIO io => Either String Certificate -> io ()
-print_certificate (Right cert) = printLn cert
-print_certificate (Left err) = putStrLn "cannot parse: \{err}"
-
 test_windows_cert : EitherT String IO ()
 test_windows_cert = do
   cert_store <- primIO prim__open_cert_store
@@ -62,9 +74,37 @@ test_windows_cert = do
       primIO $ prim__cert_body ctxptr buffer
       buffer_to_list buffer >>= \cert => loop (cert :: acc) cert_store ctxptr
 
+--- END WINDOWS ---
+
+--- START MACOS ---
+
+rootCAKeyChain : String
+rootCAKeyChain = "/System/Library/Keychains/SystemRootCertificates.keychain"
+
+systemKeyChain : String
+systemKeyChain = "/Library/Keychains/System.keychain"
+
+command : List String
+command = ["security", "find-certificate", "-pa", rootCAKeyChain, systemKeyChain]
+
+read_pems : EitherT FileError IO String
+read_pems = do
+  file <- MkEitherT (popen command Read)
+  MkEitherT (fRead file)
+
+test_macos_cert : EitherT String IO ()
+test_macos_cert = do
+  pems <- bimapEitherT (\err => "popen security failed: \{show err}") id read_pems
+  (pemblobs, _) <- MkEitherT $ pure $ parse (many parse_pem_blob) pems
+  putStrLn "\{show (length pemblobs)} certificates found"
+  let certs = map pem_to_certificate pemblobs
+  traverse_ print_certificate certs
+
+--- END MACOS ---
+
 export
 test_cert : EitherT String IO ()
 test_cert =
   if isWindows
      then test_windows_cert
-     else putStrLn "not on windows, skipped"
+     else (if os == "darwin" then test_macos_cert else putStrLn "not on windows, skipped")
