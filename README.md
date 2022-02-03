@@ -63,7 +63,7 @@ would be appreciated. A current outline of what bindings are used is as follow:
 
 C / Scheme:
 
-A C library is used to provide a unified interface for generating random numbers in [here](c/random.c).
+A C library is used to provide a unified interface for generating random numbers in [here](c/idristls.c).
 
 - Windows: `BCryptGenRandom`
 - MacOS / BSD: `arc4random_buf`
@@ -81,6 +81,8 @@ If you need to write your own implementation of `MonadRandom IO` for whatever re
 We have also implemented our own bindings and library for C networking. The official network library is decidedly not used because it uses `String` for
 payloads. This makes handling NUL bytes extremely difficult since `String` is NUL terminated. Therefore, we made our own bindings which uses `List Bits8`
 instead. Other solutions to this problem are welcomed.
+
+On Windows, C bindings are also used to fetch the system's trusted certificates, in [here](c/idristls.c).
 
 # Other notes
 We have decidedly not use any bytes library and rely heavily on `List Bits8`, `Vect n Bits8` instead. We feel that this approach is more pure and functional
