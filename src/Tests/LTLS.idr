@@ -12,6 +12,7 @@ import Data.String.Parser
 import Debug.Trace
 import Network.Socket
 import Network.TLS
+import Network.TLS.Certificate.System
 import System
 import System.File.ReadWrite
 import Utils.Bytes
@@ -35,27 +36,9 @@ test_http_body hostname =
   , ""
   ]
 
-||| Parse a list of PEM blobs into adt representation of certificate
-parse_report_error : List Certificate -> List PEMBlob -> Either String (List Certificate)
-parse_report_error acc [] = Right acc
-parse_report_error acc (x@(MkPEMBlob "CERTIFICATE" content) :: xs) =
-  case parse_certificate content of
-    Right cert => parse_report_error (cert :: acc) xs
-    Left err => Left $ "error: " <+> err <+> ", content:\n" <+> encode_pem_blob x
-parse_report_error acc ((MkPEMBlob type _) :: xs) = Left $ "unknown PEM type: " <+> type 
-
 ||| Given a list of trusted certificates, server hostname, server port,
 ||| connect to the server and send a HTTP request.
 ||| Arguments:
-||| trusted_cert_store : String
-||| trusted_cert_store is the path to a list of trusted certificates,
-||| encoded as PEM blobs. Comments within the file are allowed.
-||| On Linux or OpenBSD (and perhaps other UNIX-like systems),
-||| "/etc/ssl/cert.pem" can be used.
-||| If you do not have a "/etc/ssl/cert.pem", you can download mozilla's
-||| trusted CAs from https://wiki.mozilla.org/CA/Included_Certificates
-||| in PEM of Root Certificates in Mozilla's Root Store with the Websites
-||| (TLS/SSL) Trust Bit Enabled
 |||
 ||| target_hostname : String
 ||| target_hostname is the hostname of the server to be connected. It can
@@ -64,17 +47,11 @@ parse_report_error acc ((MkPEMBlob type _) :: xs) = Left $ "unknown PEM type: " 
 ||| port : Int
 ||| port is the port number of the server to be connected. The port number
 ||| for https server is 443.
-tls_test : String -> String -> Int -> IO ()
-tls_test trusted_cert_store target_hostname port = do
+tls_test : String -> Int -> IO ()
+tls_test target_hostname port = do
   putStrLn "reading cert store"
-  Right certs_txt <- readFile trusted_cert_store
+  Right certs <- get_system_trusted_certs
   | Left err => putStrLn $ "error while reading: " <+> show err
-
-  let Right (certs_bin, _) = parse (many parse_pem_blob) certs_txt
-  | Left err => putStrLn $ "error while parsing pem: " <+> err
-
-  let Right certs = parse_report_error [] certs_bin
-  | Left err => putStrLn $ "error while parsing crt: " <+> err
 
   -- Print the number of trusted certificates
   putStrLn $ "done, found " <+> show (length certs)
@@ -83,7 +60,7 @@ tls_test trusted_cert_store target_hostname port = do
   | Left err => putStrLn $ "unable to create socket: " <+> show err
   0 <- connect sock (Hostname target_hostname) port
   | _ => putStrLn "unable to connect"
-  
+
   -- Here we begin TLS communication in a linear fasion
   run $ do
     let handle = socket_to_handle sock
