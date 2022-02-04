@@ -6,11 +6,16 @@
 
 #ifdef __linux__
 #include <sys/random.h>
-#elif __WINDOWS__
+#endif
+
+#if __WINDOWS__
+#include <winsock2.h>
 #include <windows.h>
 #include <wincrypt.h>
 #include <bcrypt.h>
 #include <stdint.h>
+#else
+#include <sys/socket.h>
 #endif
 
 int random_buf(void *buf, size_t nbytes) {
@@ -24,6 +29,14 @@ int random_buf(void *buf, size_t nbytes) {
     arc4random_buf(buf, nbytes);
     return 0;
 #endif
+}
+
+ssize_t sock_send(int s, const void *msg, size_t len, int flags) {
+    return send(s, msg, len, flags);
+}
+
+ssize_t sock_recv(int s, void *buf, size_t len, int flags) {
+    return recv(s, buf, len, flags);
 }
 
 #ifdef __WINDOWS__
