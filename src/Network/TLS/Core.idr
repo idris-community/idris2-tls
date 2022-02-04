@@ -334,7 +334,7 @@ tls3_serverhello_to_application_go og@(TLS3_ServerHello {algo} server_hello@(MkT
           new = TLS3_ServerHello $ MkTLS3ServerHelloState cert a' h' (update consumed d') hk c'
       in tls3_serverhello_to_application_go new (map get leftover) cert_ok
     -- handle the server's certificate
-    Pure leftover (_ ** Certificate x) => 
+    Pure leftover (_ ** Certificate x) =>
       case cert of
         HasCertificate _ => throwE "Certificate was sent twice"
         Verified => throwE "Certificate was sent after verification"
@@ -433,7 +433,6 @@ decrypt_from_record og@(TLS3_Application app_state@(MkTLS3ApplicationState a' ak
   | Just (plaintext, i) => Left $ "invalid record id: " <+> show i <+> " body: " <+> xxd plaintext
   | Nothing => Left "plaintext is empty"
   Right (TLS3_Application app_state, plaintext)
-
 
 ||| Encrypt an application data wrapper to the server, and updates the TLS state
 public export

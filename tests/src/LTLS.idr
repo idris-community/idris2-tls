@@ -1,5 +1,6 @@
-module Tests.LTLS
+module LTLS
 
+import Control.Monad.Error.Either
 import Control.Linear.LIO
 import Crypto.Random
 import Crypto.Random.C
@@ -36,33 +37,15 @@ test_http_body hostname =
   , ""
   ]
 
-||| Given a list of trusted certificates, server hostname, server port,
-||| connect to the server and send a HTTP request.
-||| Arguments:
-|||
-||| target_hostname : String
-||| target_hostname is the hostname of the server to be connected. It can
-||| be a DNS hostname, IPv4 address, or IPv6 address.
-|||
-||| port : Int
-||| port is the port number of the server to be connected. The port number
-||| for https server is 443.
-tls_test : String -> Int -> IO ()
-tls_test target_hostname port = do
-  putStrLn "reading cert store"
-  Right certs <- get_system_trusted_certs
-  | Left err => putStrLn $ "error while reading: " <+> show err
-
-  -- Print the number of trusted certificates
-  putStrLn $ "done, found " <+> show (length certs)
-
+tls_connect : List Certificate -> String -> Int -> EitherT String IO (List Bits8)
+tls_connect certs target_hostname port = do
   Right sock <- socket AF_INET Stream 0
-  | Left err => putStrLn $ "unable to create socket: " <+> show err
+  | Left err => throwE "unable to create socket: \{show err}"
   0 <- connect sock (Hostname target_hostname) port
-  | _ => putStrLn "unable to connect"
+  | _ => throwE "unable to connect"
 
   -- Here we begin TLS communication in a linear fasion
-  run $ do
+  MkEitherT $ run $ do
     let handle = socket_to_handle sock
     -- Perform handshake with the TLS server
     -- Here we supply the chosen cipher suites,
@@ -98,35 +81,84 @@ tls_test target_hostname port = do
         -- or implement your own CertificateCheck function
         -- (certificate_ignore_check target_hostname)
         (certificate_check certs target_hostname)
-    | (False # (error # ())) => putStrLn error
+    | (False # (error # ())) => pure $ Left error
 
-    putStrLn "sending data over tls"
     -- send data to the server
     -- here I split the data to two chunks for testing purpose
     -- you can just send the data without splitting
     let (data1, data2) = splitAt 40 $ test_http_body target_hostname
     (True # handle) <- write handle data1
-    | (False # (error # ())) => putStrLn error
+    | (False # (error # ())) => pure $ Left error
 
     (True # handle) <- write handle data2
-    | (False # (error # ())) => putStrLn error
+    | (False # (error # ())) => pure $ Left error
 
-    putStrLn "reading data over tls"
     -- I did read twice here for testing purpose
     -- read 100 bytes of data from the server
-    (True # (output # handle)) <- read handle 100
-    | (False # (error # ())) => putStrLn error
-
-    putStrLn "response"
-    putStrLn $ ascii_to_string output
+    (True # (output1 # handle)) <- read handle 100
+    | (False # (error # ())) => pure $ Left error
 
     -- read 100 bytes of data from the server again
-    (True # (output # handle)) <- read handle 100
-    | (False # (error # ())) => putStrLn error
+    (True # (output2 # handle)) <- read handle 100
+    | (False # (error # ())) => pure $ Left error
 
-    putStrLn "response"
-    putStrLn $ ascii_to_string output
-
-    -- close handle
     close handle
-    putStrLn "ok"
+    pure $ Right (output1 <+> output2)
+
+||| Given a list of trusted certificates, server hostname, server port,
+||| connect to the server and send a HTTP request.
+||| Arguments:
+|||
+||| target_hostname : String
+||| target_hostname is the hostname of the server to be connected. It can
+||| be a DNS hostname, IPv4 address, or IPv6 address.
+|||
+||| port : Int
+||| port is the port number of the server to be connected. The port number
+||| for https server is 443.
+tls_test : String -> Int -> IO ()
+tls_test target_hostname port = do
+  putStrLn "reading cert store"
+  Right certs <- get_system_trusted_certs
+  | Left err => putStrLn "error while reading: \{show err}"
+  Right response <- runEitherT $ tls_connect certs target_hostname port
+  | Left err => putStrLn err
+  putStrLn (ascii_to_string response)
+  putStrLn "ok"
+
+tls_test_targets : List (Bool, String, Int)
+tls_test_targets =
+  [ (True, "sha256.badssl.com", 443)
+  , (True, "sha384.badssl.com", 443)
+  , (True, "sha512.badssl.com", 443)
+  -- TODO: investigate why these 2 are not working
+  -- , ("ecc256.badssl.com", 443)
+  -- , ("ecc384.badssl.com", 443)
+  , (True, "tls-v1-2.badssl.com", 1012)
+  , (False, "expired.badssl.com", 443)
+  , (False, "wrong.host.badssl.com", 443)
+  , (False, "self.signed.badssl.com", 443)
+  , (False, "untrusted-root.badssl.com", 443)
+  ]
+
+export
+tls_test_unit : EitherT String IO ()
+tls_test_unit = do
+  putStrLn "reading cert store"
+  certs <- MkEitherT get_system_trusted_certs
+  results <- liftIO $ traverse (go certs) tls_test_targets
+  let [] = filter not results
+  | failed => throwE "\{show $ length failed} tls connections failed"
+  pure ()
+  where
+    go : List Certificate -> (Bool, String, Int) -> IO Bool
+    go certs (should_work, target, port) = do
+      putStr "testing on \{target} \{show port}: "
+      Right _ <- runEitherT $ tls_connect certs target port
+      | Left err =>
+          if should_work
+             then putStrLn "error: \{err}" $> False
+             else putStrLn "expected error: \{err}" $> True
+      if should_work
+         then putStrLn "ok" $> True
+         else putStrLn "ok when it should not be ok" $> False

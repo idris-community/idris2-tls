@@ -126,7 +126,7 @@ check_branch_certificate depth cert = do
 
 ||| Given a certificate and its issuer's certificate, verify if the certificate's signature is correct
 verify_certificate_signature : Certificate -> Certificate -> Either String ()
-verify_certificate_signature subject issuer =
+verify_certificate_signature subject issuer = bimap ("error at \{show subject}: " <+>) id $
   verify_signature' subject.sig_parameter issuer.cert_public_key subject.tbs_raw_bytes subject.signature_value
 
 ||| True if there is intersecting elements in both list
