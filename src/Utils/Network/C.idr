@@ -9,11 +9,11 @@ import System.FFI
 import Data.Buffer
 
 export
-%foreign "C:send,libc"
+%foreign "C:sock_send,libidristls"
 prim__socket_send : SocketDescriptor -> (content : Buffer) -> (nbytes : Int) -> (flags : Bits32) -> PrimIO Int32
 
 export
-%foreign "C:recv,libc"
+%foreign "C:sock_recv,libidristls"
 prim__socket_recv : SocketDescriptor -> (content : Buffer) -> (nbytes : Int) -> (flags : Bits32) -> PrimIO Int32
 
 public export

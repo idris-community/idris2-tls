@@ -6,7 +6,7 @@ INSTALLDIR = `${IDRIS} --libdir`/tls-0.0.1/lib
 TARGET = libidristls
 
 ifeq ($(OS), windows)
-	LDFLAGS += -lbcrypt -lcrypt32
+	LDFLAGS += -lbcrypt -lcrypt32 -lws2_32
 endif
 
 SRCS = $(wildcard *.c)
