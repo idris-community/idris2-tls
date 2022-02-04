@@ -1,4 +1,4 @@
-module Tests.Crypto
+module Crypto
 
 import Control.Monad.State
 import Crypto.RSA

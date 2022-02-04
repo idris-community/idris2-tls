@@ -40,7 +40,7 @@ verify_signature (RSA_PSS hash_wit salt_len mgf) (RsaPublicKey public_key) messa
 verify_signature (ECDSA hash_wit) (EcdsaPublicKey public_key) message signature = do
   let (Pure [] ok) = feed (map (uncurry MkPosed) $ enumerate Z signature) parse_asn1
   | (Pure leftover _) => Left "parser overfed for ecdsa signature"
-  | (Fail err) => Left $ "parser error for ecdsasignature: " <+> show err
+  | (Fail err) => Left $ "parser error for ecdsa signature: " <+> show err
   | _ => Left "parser underfed for ecdsa signature"
   let (Universal ** 16 ** Sequence [ (Universal ** 2 ** IntVal x), (Universal ** 2 ** IntVal y) ] ) = ok
   | _ => Left "malformed ecdsa signature"
@@ -63,7 +63,7 @@ extract_algorithm _ = Nothing
 export
 oid_to_hash_algorithm : List Nat -> Maybe (DPair Type Hash)
 oid_to_hash_algorithm oid =
-  case map natToInteger oid of 
+  case map natToInteger oid of
     [ 1, 3, 14, 3, 2, 26 ] => Just (MkDPair Sha1 %search)
     [ 2, 16, 840, 1, 101, 3, 4, 2, 1 ] => Just (MkDPair Sha256 %search)
     [ 2, 16, 840, 1, 101, 3, 4, 2, 2 ] => Just (MkDPair Sha384 %search)
@@ -78,9 +78,9 @@ extract_signature_parameter oid parameter = do
     ([1, 2, 840, 113549, 1, 1, 11], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha256 %search)
     ([1, 2, 840, 113549, 1, 1, 12], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha384 %search)
     ([1, 2, 840, 113549, 1, 1, 13], Just (Universal ** 5 ** Null)) => Right (RSA_PKCSv15 $ MkDPair Sha512 %search)
-    ([1, 2, 840, 10045, 4, 3, 2], Nothing) => Right (ECDSA $ MkDPair Sha256 %search) 
-    ([1, 2, 840, 10045, 4, 3, 3], Nothing) => Right (ECDSA $ MkDPair Sha384 %search) 
-    ([1, 2, 840, 10045, 4, 3, 4], Nothing) => Right (ECDSA $ MkDPair Sha512 %search) 
+    ([1, 2, 840, 10045, 4, 3, 2], Nothing) => Right (ECDSA $ MkDPair Sha256 %search)
+    ([1, 2, 840, 10045, 4, 3, 3], Nothing) => Right (ECDSA $ MkDPair Sha384 %search)
+    ([1, 2, 840, 10045, 4, 3, 4], Nothing) => Right (ECDSA $ MkDPair Sha512 %search)
     ([1, 2, 840, 113549, 1, 1, 10], Just (Universal ** 16 ** Sequence params)) => do
       (wit, params) <- extract_hash_algo params
       (mgf, params) <- extract_mgf params
@@ -150,7 +150,7 @@ extract_ecdsa_key _ oid = Left $ "unrecognized elliptic curve group oid: " <+> s
 export
 extract_key' : ASN1Token -> Either String (Vect 20 Bits8, PublicKey)
 extract_key' ok = do
-  let (Universal ** 16 ** Sequence 
+  let (Universal ** 16 ** Sequence
         [ algorithm
         , (Universal ** 3 ** Bitstring bitstring)
         ]

@@ -12,8 +12,8 @@ Not meant for production. Read the notes on security.
 This library depends on Stefan Hoeck's [idris2-sop](https://github.com/stefan-hoeck/idris2-sop) library to derive instances.
 
 # Example
-An example that send a HTTP request over TLS to server can be found [here](src/Tests/LTLS.idr).
-More examples on how to use the internal modules can be found in the [Tests](src/Tests) folder.
+An example that send a HTTP request over TLS to server can be found [here](tests/src/LTLS.idr).
+More examples on how to use the internal modules can be found in the [Tests](tests/src/) folder.
 
 # Support coverage
 The library currently supports the following cipher suites:
