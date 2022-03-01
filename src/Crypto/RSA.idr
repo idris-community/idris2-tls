@@ -122,6 +122,6 @@ rsassa_pkcs1_v15_verify pk message signature = isJust $ do
   let s = os2ip signature
   m <- rsavp1 pk s
   em <- i2osp k m
-  
+
   em' <- emsa_pkcs1_v15_encode {algo} message k
   guard (em `s_eq'` em')

@@ -29,22 +29,25 @@ data ECDSASignature : (p : Type) -> Type where
 public export
 ecdsa_sign : (Point p, MonadRandom m) => (sk : Integer) -> (msg : Integer) -> m (ECDSASignature p)
 ecdsa_sign {p} private_key message = do
-  k <- uniform_random' 1 (order {p=p} - 1)
-  let public_key = mul private_key generator {p=p}
-  let (x, y) = to_affine $ mul k generator {p=p}
-  let r = x `mod` (order {p=p})
-  let s = mul_mod (inv_mul_mod k $ order {p=p}) (message + (r * private_key)) (order {p=p})
+  k <- uniform_random' 1 (order {p} - 1)
+  let public_key = mul private_key generator {p}
+  let (x, y) = to_affine $ mul k generator {p}
+  let r = x `mod` (order {p})
+  let s = mul_mod (inv_mul_mod k $ order {p}) (message + (r * private_key)) (order {p})
   if (r == 0) || (s == 0)
-     then ecdsa_sign {p=p} private_key message
+     then ecdsa_sign {p} private_key message
      else pure $ MkSignature public_key (r, s)
+
+within_interval : Point p => Integer -> Bool
+within_interval n = n > 0 && n < (order {p})
 
 public export
 ecdsa_verify : Integer -> ECDSASignature p -> Bool
 ecdsa_verify message (MkSignature public_key (r, s)) =
-  let n = order {p=p}
+  let n = order {p}
       s_inv = inv_mul_mod s n
       u1 = mul_mod message s_inv n
       u2 = mul_mod r s_inv n
       pt = point_add (mul u1 generator) (mul u2 public_key)
       (x, _) = to_affine pt
-  in (infinity /= pt) && (r `mod'` n) == (x `mod'` n)
+  in within_interval {p} r && within_interval {p} s && (infinity /= pt) && (r `mod'` n) == (x `mod'` n)
