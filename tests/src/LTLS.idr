@@ -131,6 +131,8 @@ tls_test_targets =
   [ (True, "sha256.badssl.com", 443)
   , (True, "sha384.badssl.com", 443)
   , (True, "sha512.badssl.com", 443)
+  , (True, "github.com", 443)
+  , (True, "google.com", 443)
   -- TODO: investigate why these 2 are not working
   -- , ("ecc256.badssl.com", 443)
   -- , ("ecc384.badssl.com", 443)
