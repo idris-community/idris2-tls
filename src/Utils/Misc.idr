@@ -92,11 +92,12 @@ group' : (n : Nat) -> (m : Nat) -> Vect (n * m) a -> Vect m (Vect n a)
 group' n m xs = group m n $ rewrite multCommutative m n in xs
 
 -- https://gist.github.com/buzden/afc798fd2b01388f1626ae58c6ab8548
+-- to prove that, say given `xs : Vect (n + m) a`, can be splitted at index `n` into `l` and `r` (the (0 _ : splitAt n xs = (l, r)) part), and then be concatenated back into xs
 export
 split_at_concat_rev : (n : Nat) -> (xs : Vect (n + m) a) -> {0 l : Vect n a} -> {0 r : Vect m a} -> (0 _ : splitAt n xs = (l, r)) -> l ++ r = xs
 split_at_concat_rev Z _ Refl = Refl
-split_at_concat_rev (S n) (x::xs) {l} prf with (splitAt n xs) proof sprf
-  split_at_concat_rev (S n) (x::xs) {l=x::l} Refl | (l, element) = cong (x::) $ split_at_concat_rev n xs sprf
+split_at_concat_rev (S n) (x :: xs) {l} prf with (splitAt n xs) proof sprf
+  split_at_concat_rev (S n) (x :: xs) {l = x :: l} Refl | (l, element) = cong (x ::) $ split_at_concat_rev n xs sprf
 
 -- https://gist.github.com/buzden/afc798fd2b01388f1626ae58c6ab8548
 public export
