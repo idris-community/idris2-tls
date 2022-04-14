@@ -129,8 +129,10 @@ tls_test target_hostname port = do
 tls_test_targets : List (Bool, String, Int)
 tls_test_targets =
   [ (True, "sha256.badssl.com", 443)
-  , (True, "sha384.badssl.com", 443)
-  , (True, "sha512.badssl.com", 443)
+  -- TODO: change back to True when they are fixed
+  -- https://github.com/chromium/badssl.com/issues/501
+  , (False, "sha384.badssl.com", 443)
+  , (False, "sha512.badssl.com", 443)
   , (True, "github.com", 443)
   , (True, "google.com", 443)
   -- TODO: investigate why these 2 are not working
