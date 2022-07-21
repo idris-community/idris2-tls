@@ -139,7 +139,7 @@ jobs:
           git clone https://github.com/stefan-hoeck/idris2-sop
           cd idris2-sop
           git checkout ${{ env.SOP_COMMIT }}
-          make install
+          idris2 --install sop.ipkg
 
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
@@ -199,7 +199,7 @@ jobs:
           git clone https://github.com/stefan-hoeck/idris2-sop
           cd idris2-sop
           git checkout ${{ env.SOP_COMMIT }}
-          make install
+          idris2 --install sop.ipkg
         shell: bash
 
       - name: Checkout idris2-tls
