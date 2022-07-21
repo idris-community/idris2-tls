@@ -12,10 +12,10 @@ on:
 ########################################################################
 
 env:
-  IDRIS2_COMMIT: 43c5b5263cf7dd6788291b73220d841660050407
+  IDRIS2_COMMIT: bf87b623ef64244451d10c4b5460e8fc2f88c99a
   SCHEME: scheme
-  ELAB_COMMIT: ec2d4666c8c272d12e596009946021370e1eedbf
-  SOP_COMMIT: 3006ded7b46bdfbe30f090f5db3e758bc443d67b
+  ELAB_COMMIT: 036b6d693dffe6efb508bfa2346705d51f9d0b61
+  SOP_COMMIT: b607a7dfe24f6f39a163266538913c367b74f0cf
 
 jobs:
   ubuntu-chez:
@@ -65,7 +65,7 @@ jobs:
           git clone https://github.com/stefan-hoeck/idris2-sop
           cd idris2-sop
           git checkout ${{ env.SOP_COMMIT }}
-          make install
+          idris2 --install sop.ipkg
 
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
