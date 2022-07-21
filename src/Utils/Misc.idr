@@ -230,11 +230,6 @@ namespace Vect
     go [] = go xs
     go (z :: zs) = z :: go zs
 
-  public export
-  unsnoc : Vect (S n) a -> (Vect n a, a)
-  unsnoc (x :: []) = ([], x)
-  unsnoc (x :: (y :: ys)) = let (zs, z) = unsnoc (y :: ys) in (x :: zs, z)
-
 namespace Stream
   public export
   prepend : List a -> Stream a -> Stream a
