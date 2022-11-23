@@ -14,6 +14,10 @@ alphabets = fromList $ unpack "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 padding : Char
 padding = '='
 
+export
+is_base64_char : Char -> Bool
+is_base64_char c = isAlphaNum c || (c == '+') || (c == '/') || (c == '=')
+
 many_to_bits8 : List Bits8 -> Either String (List Bits8)
 many_to_bits8 [] = Right []
 many_to_bits8 [x] = Left "underfed, not enough base64 chars"
