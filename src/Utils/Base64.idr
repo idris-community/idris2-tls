@@ -16,7 +16,10 @@ padding = '='
 
 export
 is_base64_char : Char -> Bool
-is_base64_char c = isAlphaNum c || (c == '+') || (c == '/') || (c == '=')
+is_base64_char c = isAlphaNum c || c == '+' || c == '/' || c == '='
+
+lookup_base64_char : Char -> Maybe Bits8
+lookup_base64_char = map (cast . finToInteger) . flip elemIndex alphabets
 
 many_to_bits8 : List Bits8 -> Either String (List Bits8)
 many_to_bits8 [] = Right []
@@ -29,13 +32,12 @@ many_to_bits8 (a :: b :: c :: d :: xs) = map (four_to_three a b c d <+>) (many_t
     four_to_three a b c d = [(shiftL a 2) .|. (shiftR b 4), (shiftL b 4) .|. (shiftR c 2), (shiftL (c .&. 0b11) 6) .|. d]
 
 parse_base64 : List Char -> Either String (List Bits8)
-parse_base64 [] = Right []
-parse_base64 ['='] = Right []
-parse_base64 ['=', '='] = Right []
-parse_base64 (c :: cs) = case elemIndex c alphabets of
-  Just i => [| pure (cast $ finToInteger i) :: parse_base64 cs |]
+parse_base64 [] = pure []
+parse_base64 ['='] = pure []
+parse_base64 ['=', '='] = pure []
+parse_base64 (c :: cs) = case lookup_base64_char c of
+  Just b => [| pure b :: parse_base64 cs |]
   Nothing => Left $ "invalid base64 character: " <+> show c
-
 
 three_to_four : Bits8 -> Bits8 -> Bits8 -> List Char
 three_to_four a b c =
