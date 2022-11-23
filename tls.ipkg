@@ -13,11 +13,11 @@ bugtracker = "https://github.com/octeep/idris2-tls/issues"
 license = "ISC (refer to LICENSE file)"
 brief = "A portable idris2 implementation of TLS"
 
-depends = base      >= 0.5.1
-        , contrib   >= 0.5.1
-        , network   >= 0.5.1
-        , sop       >= 0.5.0
-        , elab-util >= 0.5.0
+depends = base      >= 0.6.0
+        , contrib   >= 0.6.0
+        , network   >= 0.6.0
+        , sop       >= 0.6.0
+        , elab-util >= 0.6.0
 
 modules = Crypto.RSA,
           Crypto.ChaCha,

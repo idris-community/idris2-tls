@@ -12,60 +12,22 @@ on:
 ########################################################################
 
 env:
-  IDRIS2_COMMIT: bf87b623ef64244451d10c4b5460e8fc2f88c99a
+  IDRIS2_COMMIT: v0.6.0
   SCHEME: scheme
-  ELAB_COMMIT: 036b6d693dffe6efb508bfa2346705d51f9d0b61
-  SOP_COMMIT: b607a7dfe24f6f39a163266538913c367b74f0cf
+  ELAB_COMMIT: 99babcbf4deeeca283ba62a64b3ce243bd690fcb
+  SOP_COMMIT: 2389da58fb453ecabed7acf0c5c0b4d723ad2d2f
 
 jobs:
   ubuntu-chez:
     runs-on: ubuntu-latest
+    env:
+      PACK_DIR: /root/.pack
+    strategy:
+      fail-fast: false
+    container: ghcr.io/stefan-hoeck/idris2-pack:latest
     steps:
-      - name: Initialise variables
-        run: |
-          echo "$HOME/.idris2/bin" >> $GITHUB_PATH
-
-      # This caching step allows us to save a lot of building time by only
-      # rebuilding Idris2 from boostrap if absolutely necessary
-      - name: Cache Idris2
-        uses: actions/cache@v2
-        id: cache-idris2
-        with:
-          path: |
-            ~/.idris2
-          key: ${{ runner.os }}-${{ env.IDRIS2_COMMIT }}-scheme954
-
-      - name: Install Chez
-        run: |
-          echo "deb http://security.ubuntu.com/ubuntu hirsute universe" | sudo tee -a /etc/apt/sources.list
-          sudo apt-get update
-          sudo apt-get install -y -t hirsute chezscheme
-
-      - name: Test Scheme
-        run: |
-          scheme --version
-
-      - name: Install Idris2
-        if: steps.cache-idris2.outputs.cache-hit != 'true'
-        run: |
-          git clone https://github.com/idris-lang/idris2
-          cd idris2
-          git checkout ${{ env.IDRIS2_COMMIT }}
-          make bootstrap && make install
-
-      - name: Install idris2-elab-util
-        run: |
-          git clone https://github.com/stefan-hoeck/idris2-elab-util
-          cd idris2-elab-util
-          git checkout ${{ env.ELAB_COMMIT }}
-          make install
-
       - name: Install idris2-sop
-        run: |
-          git clone https://github.com/stefan-hoeck/idris2-sop
-          cd idris2-sop
-          git checkout ${{ env.SOP_COMMIT }}
-          idris2 --install sop.ipkg
+        run: pack install sop
 
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
