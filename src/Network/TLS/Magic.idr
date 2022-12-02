@@ -9,7 +9,12 @@ import Crypto.Hash
 import Crypto.ECDH
 import Crypto.Curve
 import Crypto.Curve.Weierstrass
+import Derive.Prelude
 import Generics.Derive
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
 
 %language ElabReflection
 
