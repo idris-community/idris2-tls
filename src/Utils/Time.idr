@@ -8,7 +8,12 @@ import Data.String
 import Data.Fin.Extra
 import Utils.Misc
 import Decidable.Equality
+import Derive.Prelude
 import Generics.Derive
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
 
 %language ElabReflection
 
