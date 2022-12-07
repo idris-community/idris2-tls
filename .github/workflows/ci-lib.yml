@@ -26,11 +26,11 @@ jobs:
       fail-fast: false
     container: ghcr.io/stefan-hoeck/idris2-pack:latest
     steps:
-      - name: Install idris2-sop
-        run: pack install sop
-
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
+
+      - name: Install idris2-sop
+        run: pack install sop
 
       - name: Build package
         run: make install
