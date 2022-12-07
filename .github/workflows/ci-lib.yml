@@ -14,8 +14,8 @@ on:
 env:
   IDRIS2_COMMIT: v0.6.0
   SCHEME: scheme
-  ELAB_COMMIT: 99babcbf4deeeca283ba62a64b3ce243bd690fcb
-  SOP_COMMIT: 2389da58fb453ecabed7acf0c5c0b4d723ad2d2f
+  ELAB_COMMIT: 87f9d910f4669b38d9d2cd67b5a63922dffb1ab1
+  SOP_COMMIT: 87a30cf81117f387824f945374081ffa2effa8a0
 
 jobs:
   ubuntu-chez:
