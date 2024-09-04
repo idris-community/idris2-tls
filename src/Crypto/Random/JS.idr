@@ -23,7 +23,7 @@ public export
 HasIO io => MonadRandom io where
   random_bytes Z = pure []
   random_bytes n =
-  case codegen of
-    "node" => buffer_content prim_io__randomBytes n
-    "javascript" => buffer_content prim_io__getRandomValues n
-    _ => assert_total $ idris_crash "no random backend availible"
+    case codegen of
+      "node" => buffer_content prim_io__randomBytes n
+      "javascript" => buffer_content prim_io__getRandomValues n
+      _ => assert_total $ idris_crash "no random backend availible"
