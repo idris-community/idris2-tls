@@ -140,9 +140,9 @@ shiftR' x i = maybe_a_a zeroBits $ do
 export
 rotl : FiniteBits a => {n : Nat} -> {auto prf : ((S n) = bitSize {a})} -> Fin (S n) -> a -> a
 rotl FZ x = x
-rotl (FS i) x = (shiftL x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftR x $ bitsToIndex $ invFin $ coerce prf $ weaken i)
+rotl (FS i) x = (shiftL x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftR x $ bitsToIndex $ complement $ coerce prf $ weaken i)
 
 export
 rotr : FiniteBits a => {n : Nat} -> {auto prf : ((S n) = bitSize {a})} -> Fin (S n) -> a -> a
 rotr FZ x = x
-rotr (FS i) x = (shiftR x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftL x $ bitsToIndex $ invFin $ coerce prf $ weaken i)
+rotr (FS i) x = (shiftR x $ bitsToIndex (coerce prf $ FS i)) .|. (shiftL x $ bitsToIndex $ complement $ coerce prf $ weaken i)

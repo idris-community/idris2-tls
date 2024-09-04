@@ -14,7 +14,7 @@ namespace Parserializer
     encode : a -> List c
     decode : Parser i e a
 
-  infixr 5 <*>>
+  export infixr 5 <*>>
 
   export
   apair : (Semigroup e, Monoid i) => Parserializer c i e a -> Parserializer c i e b -> Parserializer c i e (a, b)
