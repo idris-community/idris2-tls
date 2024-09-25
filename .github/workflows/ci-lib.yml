@@ -25,14 +25,11 @@ jobs:
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
 
-      - name: Install idris deps
-        run: pack install-deps tls.ipkg
-
       - name: Build package
-        run: make install
+        run: pack --no-prompt install tls
 
       - name: Test package
-        run: make test
+        run: pack --no-prompt run tls-tests
 
   # windows-chez:
   #   runs-on: windows-latest
