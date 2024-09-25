@@ -5,3 +5,5 @@ build/
 *.o
 *.dll
 *.dylib
+/lib/
+/support/libidristls

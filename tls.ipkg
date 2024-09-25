@@ -71,4 +71,9 @@ modules = Crypto.RSA,
           Utils.ConstantTable
 
 opts = "-Wno-shadowing"
+
 sourcedir = "src"
+
+prebuild = "make -C support all"
+
+preinstall = "make -C support install"
