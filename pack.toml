@@ -1,0 +1,9 @@
+[custom.all.tls]
+type = "local"
+path = "."
+ipkg = "tls.ipkg"
+
+[custom.all.tls-tests]
+type = "local"
+path = "tests"
+ipkg = "tlstest.ipkg"
