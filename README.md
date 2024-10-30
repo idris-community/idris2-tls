@@ -1,15 +1,12 @@
 # idris2-tls
 A portable idris2 implementation of TLS 1.2 and TLS 1.3 protocol.
 
-# Compiler version
-The project currently targets Idris2 compiler at version [v0.6.0](https://github.com/idris-lang/Idris2/tree/v0.6.0)
-
 # Goal
 This library aims to provide a TLS implementation in Idris that supports communication with most modern websites and provide reasonable performance.
 Not meant for production. Read the notes on security.
 
-# Dependencies
-This library depends on Stefan Hoeck's [idris2-sop](https://github.com/stefan-hoeck/idris2-sop) library to derive instances.
+# Installation
+The latest version of this library can be installed with [pack](https://github.com/stefan-hoeck/idris2-pack).
 
 # Example
 An example that send a HTTP request over TLS to server can be found [here](tests/src/LTLS.idr).
