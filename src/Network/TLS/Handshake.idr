@@ -163,6 +163,7 @@ namespace Message
     constructor MkClientKeyExchange
     public_key : List Bits8
 
+  export
   Show ClientKeyExchange where
     show x = show_record "ClientKeyExchange"
       [ ("public_key", show x.public_key)
