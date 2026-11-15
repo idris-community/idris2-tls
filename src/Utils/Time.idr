@@ -225,7 +225,7 @@ date_to_normalized_tuple date = (date.year, date.month, finToInteger date.day - 
 tuple_normalize_month : (Integer, Integer, Integer) -> (Integer, Month, Integer)
 tuple_normalize_month (year, month, day) =
   ( if month >= 0 then year + month `div` 12 else year + ((month + 1) `div` 12) - 1
-  , fin_to_month $ modFinNZ (integerToNat $ month `mod'` 12) 12 SIsNonZero
+  , fin_to_month $ modFinNZ (integerToNat $ month `mod'` 12) 12 ItIsSucc
   , day)
 
 tuple_normalize_next_month : (Integer, Month, Integer) -> (Integer, Month, Integer)
@@ -289,11 +289,11 @@ record DateTime where
 
 second_of_day : Nat -> (Fin 24, Fin 60, Fin 60)
 second_of_day x =
-  let second = modFinNZ x 60 SIsNonZero
-      x = divNatNZ x 60 SIsNonZero
-      minute = modFinNZ x 60 SIsNonZero
-      x = divNatNZ x 60 SIsNonZero
-      hour = modFinNZ x 24 SIsNonZero
+  let second = modFinNZ x 60 ItIsSucc
+      x = divNatNZ x 60 ItIsSucc
+      minute = modFinNZ x 60 ItIsSucc
+      x = divNatNZ x 60 ItIsSucc
+      hour = modFinNZ x 24 ItIsSucc
   in (hour, minute, second)
 
 export
@@ -308,7 +308,7 @@ export
 millisecond_epoch_to_datetime : Integer -> DateTime
 millisecond_epoch_to_datetime epoch =
   let subsecond' = integerToNat $ epoch `mod'` 1000
-  in { subsecond := modFinNZ subsecond' 1000 SIsNonZero } (epoch_to_datetime $ epoch `div` 1000)
+  in { subsecond := modFinNZ subsecond' 1000 ItIsSucc } (epoch_to_datetime $ epoch `div` 1000)
 
 datetime_to_epoch' : DateTime -> Integer
 datetime_to_epoch' datetime =

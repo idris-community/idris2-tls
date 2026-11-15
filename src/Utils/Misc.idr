@@ -301,7 +301,7 @@ pad_zero : Nat -> List Bits8 -> List Bits8
 pad_zero Z a = a
 pad_zero (S n) a =
   let l = length a
-      l = minus ((S n) * (divCeilNZ l (S n) SIsNonZero)) l
+      l = minus ((S n) * (divCeilNZ l (S n) ItIsSucc)) l
   in a <+> replicate l 0
 
 public export
