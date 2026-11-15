@@ -59,7 +59,7 @@ public export
   Element = p
   diffie_hellman sk pk =
     let (x, _) = to_affine $ mul sk pk
-        bytes = divCeilNZ (bits {p=p}) 8 SIsNonZero
+        bytes = divCeilNZ (bits {p=p}) 8 ItIsSucc
     in Just $ toList $ integer_to_be bytes x
   generate_key_pair = do
     sk <- uniform_random' 2 (order {p=p} - 1)

@@ -46,10 +46,10 @@ three_to_four a b c =
       k = (shiftL (b .&. 0b1111) 2) .|. (shiftR c 6)
       l = c .&. 0b111111
       ijkl =
-        [ modFinNZ (cast i) 64 SIsNonZero
-        , modFinNZ (cast j) 64 SIsNonZero
-        , modFinNZ (cast k) 64 SIsNonZero
-        , modFinNZ (cast l) 64 SIsNonZero
+        [ modFinNZ (cast i) 64 ItIsSucc
+        , modFinNZ (cast j) 64 ItIsSucc
+        , modFinNZ (cast k) 64 ItIsSucc
+        , modFinNZ (cast l) 64 ItIsSucc
         ]
   in (\x => index x alphabets) <$> ijkl
 

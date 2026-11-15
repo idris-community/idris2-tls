@@ -106,7 +106,7 @@ rcons = go 1
   go x = x :: go ((if x < 0x80 then id else xor (0x1B)) $ 2 * x)
 
 export
-expand_key' : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> Fin n_k -> (rcs : Stream Bits8) -> (prev_block : Vect n_k (Vect n_b Bits8)) -> Stream (Vect n_b Bits8)
+expand_key' : {n_k, n_b : _} -> {auto 0 ok : IsSucc n_b} -> Fin n_k -> (rcs : Stream Bits8) -> (prev_block : Vect n_k (Vect n_b Bits8)) -> Stream (Vect n_b Bits8)
 expand_key' {n_b = S n_b'} counter (rc :: rcs) (x :: xs) =
   let
     y = last (x :: xs)
@@ -122,7 +122,7 @@ expand_key' {n_b = S n_b'} counter (rc :: rcs) (x :: xs) =
           z :: expand_key' (weaken counter') (rc :: rcs) (snoc xs z)
 
 export
-expand_key : {n_k, n_b : _} -> {auto 0 ok : NonZero n_b} -> {auto 0 ok2 : NonZero n_k} -> Vect n_k (Vect n_b Bits8) -> Stream (Vect n_b Bits8)
+expand_key : {n_k, n_b : _} -> {auto 0 ok : IsSucc n_b} -> {auto 0 ok2 : IsSucc n_k} -> Vect n_k (Vect n_b Bits8) -> Stream (Vect n_b Bits8)
 expand_key {n_k = S n_k'} k = expand_key' FZ rcons k
 
 public export
@@ -138,10 +138,10 @@ get_n_k AES192 = 6
 get_n_k AES256 = 8
 
 public export
-n_k_never_Z : (mode : _) -> NonZero (get_n_k mode)
-n_k_never_Z AES128 = SIsNonZero
-n_k_never_Z AES192 = SIsNonZero
-n_k_never_Z AES256 = SIsNonZero
+n_k_never_Z : (mode : _) -> IsSucc (get_n_k mode)
+n_k_never_Z AES128 = ItIsSucc
+n_k_never_Z AES192 = ItIsSucc
+n_k_never_Z AES256 = ItIsSucc
 
 public export
 get_main_rounds : Mode -> Nat

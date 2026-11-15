@@ -25,6 +25,11 @@ jobs:
       - name: Checkout idris2-tls
         uses: actions/checkout@v2
 
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install --yes libc6-dev
+
       - name: Build package
         run: pack --no-prompt install tls
 
